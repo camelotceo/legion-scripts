@@ -107,6 +107,27 @@
             display: flex; justify-content: center; align-items: center;
             color: #fff; font-size: 11px; font-weight: bold;
         }
+        #pauseBtn {
+            position: absolute; right: 20px; bottom: 145px; width: 50px; height: 50px;
+            background: rgba(255, 200, 50, 0.5); border: 3px solid rgba(255, 220, 100, 0.7);
+            border-radius: 50%; pointer-events: auto; touch-action: none;
+            display: flex; justify-content: center; align-items: center;
+            color: #fff; font-size: 20px; font-weight: bold;
+        }
+        #pauseOverlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8); display: none; justify-content: center;
+            align-items: center; flex-direction: column; z-index: 200;
+        }
+        #pauseOverlay.show { display: flex; }
+        #pauseOverlay h2 { color: #ffd700; font-size: 36px; margin-bottom: 20px; }
+        .pause-btn {
+            padding: 12px 30px; font-size: 16px; margin: 10px;
+            background: linear-gradient(135deg, #4a6cf7, #6a4cf7);
+            color: #fff; border: none; border-radius: 25px; cursor: pointer;
+        }
+        .pause-btn:hover { transform: scale(1.05); }
+        .pause-btn.quit { background: linear-gradient(135deg, #f74a4a, #f76a4a); }
         .leaderboard { margin: 15px 0; max-height: 180px; overflow-y: auto; }
         .leaderboard h3 { color: #ffd700; margin-bottom: 10px; font-size: 16px; }
         .leaderboard-list { list-style: none; padding: 0; margin: 0; }
@@ -159,8 +180,8 @@
             0%, 100% { transform: translateX(-50%) scale(1); }
             50% { transform: translateX(-50%) scale(1.05); }
         }
+        #touchControls.show { display: block; }
         @media (max-width: 850px) {
-            #touchControls { display: block; }
             #gameCanvas { max-width: 100vw; max-height: 65vh; }
             #startScreen h1, #gameOverScreen h1 { font-size: 26px; }
             .controls { font-size: 11px; }
@@ -213,7 +234,8 @@
             </div>
             <button class="btn" onclick="startGame()">Start Game</button>
             <div class="controls">
-                <p>WASD/Arrows to Move | Space to Shoot | Q to Switch Weapon | ESC to Quit</p>
+                <p>WASD/Arrows to Move | Space to Shoot | Q to Swap Weapon</p>
+                <p>P or ESC to Pause</p>
                 <p style="color: #6af;">Collect: MG (Machine Gun) | BZ (Bazooka) | LS (Laser)</p>
             </div>
             <div class="leaderboard" id="startLeaderboard">
@@ -237,10 +259,16 @@
             <button class="btn" onclick="startGame()">Play Again</button>
             <button class="btn" style="background: #555;" onclick="backToMenu()">Menu</button>
         </div>
+        <div id="pauseOverlay">
+            <h2>PAUSED</h2>
+            <button class="pause-btn" onclick="resumeGame()">Resume</button>
+            <button class="pause-btn quit" onclick="quitFromPause()">Quit Game</button>
+        </div>
     </div>
     <div id="touchControls">
         <div id="joystickArea"><div id="joystickKnob"></div></div>
-        <div id="switchWeaponBtn">WPN</div>
+        <div id="pauseBtn" onclick="togglePause()">⏸</div>
+        <div id="switchWeaponBtn">SWAP</div>
         <div id="fireButton">FIRE</div>
     </div>
 
@@ -371,10 +399,12 @@
 
         // === GAME STATE ===
         let gameRunning = false;
+        let gamePaused = false;
         let score = 0;
         let lives = 3;
         let level = 1;
         const levelUpScore = 1000;
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 850;
 
         // === LEVEL SPEED MULTIPLIERS (2x base) ===
         const levelSpeeds = { 1: 1.0, 2: 1.2, 3: 1.4, 4: 1.6, 5: 1.8 };
@@ -1735,7 +1765,7 @@
         }
 
         function update(dt) {
-            if (!gameRunning) return;
+            if (!gameRunning || gamePaused) return;
 
             const diff = getDiffSettings();
 
@@ -2065,13 +2095,19 @@
             updateWeaponDisplay();
 
             gameRunning = true;
+            gamePaused = false;
             lastFrameTime = performance.now();
             playGameStart();
             startBackgroundMusic(false);
+            // Show touch controls on mobile
+            if (isMobile) {
+                document.getElementById('touchControls').classList.add('show');
+            }
         }
 
         async function gameOver() {
             gameRunning = false;
+            gamePaused = false;
             laserActive = false;
             // Clean up boss state
             boss = null;
@@ -2079,6 +2115,7 @@
             stopBossMusic();
             document.getElementById('bossHealthContainer').classList.remove('show');
             document.getElementById('bossTaunt').classList.remove('show');
+            document.getElementById('touchControls').classList.remove('show');
 
             document.getElementById('finalScore').textContent = score;
             document.getElementById('finalLevel').textContent = level;
@@ -2109,6 +2146,7 @@
         async function quitGame() {
             if (!gameRunning) return;
             gameRunning = false;
+            gamePaused = false;
             laserActive = false;
             // Clean up boss state
             boss = null;
@@ -2116,17 +2154,59 @@
             stopBossMusic();
             document.getElementById('bossHealthContainer').classList.remove('show');
             document.getElementById('bossTaunt').classList.remove('show');
+            document.getElementById('pauseOverlay').classList.remove('show');
+            document.getElementById('touchControls').classList.remove('show');
             stopBackgroundMusic();
             document.getElementById('startScreen').classList.remove('hidden');
             await renderLeaderboard('startLeaderboardList');
         }
 
+        // === PAUSE FUNCTIONS ===
+        function togglePause() {
+            if (!gameRunning) return;
+            if (gamePaused) {
+                resumeGame();
+            } else {
+                pauseGame();
+            }
+        }
+
+        function pauseGame() {
+            if (!gameRunning || gamePaused) return;
+            gamePaused = true;
+            document.getElementById('pauseOverlay').classList.add('show');
+            stopBackgroundMusic();
+            stopBossMusic();
+        }
+
+        function resumeGame() {
+            if (!gamePaused) return;
+            gamePaused = false;
+            document.getElementById('pauseOverlay').classList.remove('show');
+            lastFrameTime = performance.now();
+            if (bossActive) {
+                startBossMusic();
+            } else {
+                startBackgroundMusic(shieldActive);
+            }
+        }
+
+        async function quitFromPause() {
+            document.getElementById('pauseOverlay').classList.remove('show');
+            await quitGame();
+        }
+
         // === CONTROLS ===
         document.addEventListener('keydown', (e) => {
             keys[e.code] = true;
-            if (e.code === 'Space' && gameRunning) { shoot(); e.preventDefault(); }
-            if (e.code === 'KeyQ' && gameRunning) { switchWeapon(); e.preventDefault(); }
-            if (e.code === 'Escape' && gameRunning) { quitGame(); e.preventDefault(); }
+            if (e.code === 'Space' && gameRunning && !gamePaused) { shoot(); e.preventDefault(); }
+            if (e.code === 'KeyQ' && gameRunning && !gamePaused) { switchWeapon(); e.preventDefault(); }
+            if (e.code === 'KeyP' && gameRunning) { togglePause(); e.preventDefault(); }
+            if (e.code === 'Escape' && gameRunning) {
+                if (gamePaused) resumeGame();
+                else pauseGame();
+                e.preventDefault();
+            }
         });
         document.addEventListener('keyup', (e) => {
             keys[e.code] = false;
