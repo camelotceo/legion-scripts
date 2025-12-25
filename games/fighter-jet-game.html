@@ -133,6 +133,32 @@
             color: #000; border: none; border-radius: 20px; cursor: pointer; font-weight: bold;
         }
         #saveScoreBtn:hover { transform: scale(1.05); }
+        #bossHealthContainer {
+            position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+            width: 300px; display: none; flex-direction: column; align-items: center;
+        }
+        #bossHealthContainer.show { display: flex; }
+        #bossName { color: #ff4444; font-size: 14px; font-weight: bold; margin-bottom: 5px; text-shadow: 0 0 10px #ff0000; }
+        #bossHealthBar {
+            width: 100%; height: 20px; background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #ff4444; border-radius: 10px; overflow: hidden;
+        }
+        #bossHealthFill {
+            height: 100%; background: linear-gradient(90deg, #ff0000, #ff4444, #ff6666);
+            transition: width 0.2s; width: 100%;
+        }
+        #bossTaunt {
+            position: absolute; top: 120px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8); color: #ff6666; padding: 10px 20px;
+            border-radius: 10px; font-size: 16px; font-weight: bold; display: none;
+            border: 2px solid #ff4444; text-align: center; max-width: 80%;
+            animation: tauntPulse 0.5s ease-in-out;
+        }
+        #bossTaunt.show { display: block; }
+        @keyframes tauntPulse {
+            0%, 100% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.05); }
+        }
         @media (max-width: 850px) {
             #touchControls { display: block; }
             #gameCanvas { max-width: 100vw; max-height: 65vh; }
@@ -141,6 +167,8 @@
             .diff-btn { padding: 8px 14px; font-size: 12px; }
             .leaderboard { max-height: 120px; }
             .leaderboard-list li { font-size: 11px; padding: 4px 10px; }
+            #bossHealthContainer { width: 200px; }
+            #bossTaunt { font-size: 12px; }
         }
     </style>
 </head>
@@ -162,6 +190,11 @@
                 <span>Lives: <span id="lives">3</span></span>
             </div>
         </div>
+        <div id="bossHealthContainer">
+            <span id="bossName">BOSS NAME</span>
+            <div id="bossHealthBar"><div id="bossHealthFill"></div></div>
+        </div>
+        <div id="bossTaunt"></div>
         <div id="startScreen">
             <h1>Legion's Space Fight</h1>
             <p class="color-label">Choose Your Jet</p>
@@ -358,6 +391,96 @@
         const shieldMaxHits = 3;
         let shieldStartTime = 0;
 
+        // === BOSS SYSTEM ===
+        let boss = null;
+        let bossActive = false;
+        let bossDefeated = [];
+        let bossTauntTimer = 0;
+        let bossMusic = null;
+
+        const BOSSES = {
+            1: {
+                name: 'DARK PHANTOM',
+                type: 'aircraft',
+                health: 20, maxHealth: 20,
+                width: 120, height: 80,
+                speed: 150, fireRate: 0.8,
+                color: '#8B0000',
+                taunts: [
+                    "You dare challenge me?",
+                    "Pathetic human!",
+                    "I will destroy you!",
+                    "Is that all you've got?",
+                    "You cannot escape!"
+                ],
+                attackPattern: 'spread'
+            },
+            2: {
+                name: 'CYBER KRAKEN',
+                type: 'monster',
+                health: 30, maxHealth: 30,
+                width: 150, height: 100,
+                speed: 120, fireRate: 0.6,
+                color: '#4B0082',
+                taunts: [
+                    "The void consumes all!",
+                    "Your weapons are useless!",
+                    "Feel my tentacles of doom!",
+                    "No one survives the Kraken!",
+                    "Surrender to darkness!"
+                ],
+                attackPattern: 'spiral'
+            },
+            3: {
+                name: 'INFERNO TITAN',
+                type: 'monster',
+                health: 40, maxHealth: 40,
+                width: 180, height: 120,
+                speed: 100, fireRate: 0.5,
+                color: '#FF4500',
+                taunts: [
+                    "BURN IN FLAMES!",
+                    "I am eternal fire!",
+                    "Your soul will fuel my power!",
+                    "Witness true destruction!",
+                    "Nothing survives my inferno!"
+                ],
+                attackPattern: 'wave'
+            },
+            4: {
+                name: 'QUANTUM DESTROYER',
+                type: 'aircraft',
+                health: 50, maxHealth: 50,
+                width: 200, height: 100,
+                speed: 180, fireRate: 0.4,
+                color: '#00CED1',
+                taunts: [
+                    "I exist in all dimensions!",
+                    "Time is my weapon!",
+                    "You cannot hit what phases!",
+                    "Reality bends to my will!",
+                    "Prepare for annihilation!"
+                ],
+                attackPattern: 'random'
+            },
+            5: {
+                name: 'OMEGA OVERLORD',
+                type: 'monster',
+                health: 75, maxHealth: 75,
+                width: 220, height: 140,
+                speed: 130, fireRate: 0.3,
+                color: '#FFD700',
+                taunts: [
+                    "I AM THE FINAL BOSS!",
+                    "NO ONE HAS EVER DEFEATED ME!",
+                    "YOUR JOURNEY ENDS HERE!",
+                    "BOW BEFORE THE OVERLORD!",
+                    "THIS IS YOUR DOOM!"
+                ],
+                attackPattern: 'all'
+            }
+        };
+
         // === WEAPONS ===
         const WEAPONS = {
             pistol: { name: 'PISTOL', fireRate: 150, color: '#00ffff' },
@@ -526,8 +649,451 @@
         function toggleMute() {
             isMuted = !isMuted;
             const btn = document.getElementById('muteButton');
-            if (isMuted) { btn.textContent = '🔇'; btn.classList.add('muted'); stopBackgroundMusic(); }
-            else { btn.textContent = '🔊'; btn.classList.remove('muted'); if (gameRunning) startBackgroundMusic(shieldActive); }
+            if (isMuted) { btn.textContent = '🔇'; btn.classList.add('muted'); stopBackgroundMusic(); stopBossMusic(); }
+            else { btn.textContent = '🔊'; btn.classList.remove('muted'); if (gameRunning) { if (bossActive) startBossMusic(); else startBackgroundMusic(shieldActive); } }
+        }
+
+        // === BOSS MUSIC ===
+        function startBossMusic() {
+            if (isMuted) return;
+            stopBackgroundMusic();
+            stopBossMusic();
+            bossMusic = { active: true, intervalId: null };
+            const bassNotes = [82, 82, 98, 82, 110, 82, 98, 130];
+            const leadNotes = [330, 392, 440, 392, 523, 440];
+            let beatCount = 0;
+
+            function playBossBeat() {
+                if (!bossMusic || !bossMusic.active) return;
+                const now = audioContext.currentTime;
+                // Heavy bass drum
+                const bass = audioContext.createOscillator();
+                const bassGain = audioContext.createGain();
+                bass.type = 'sawtooth';
+                bass.frequency.value = bassNotes[beatCount % bassNotes.length];
+                bass.connect(bassGain);
+                bassGain.connect(audioContext.destination);
+                bassGain.gain.setValueAtTime(0.35, now);
+                bassGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+                bass.start(now);
+                bass.stop(now + 0.12);
+
+                // Aggressive lead
+                if (beatCount % 2 === 0) {
+                    const lead = audioContext.createOscillator();
+                    const leadGain = audioContext.createGain();
+                    lead.type = 'square';
+                    lead.frequency.value = leadNotes[(beatCount / 2) % leadNotes.length];
+                    lead.connect(leadGain);
+                    leadGain.connect(audioContext.destination);
+                    leadGain.gain.setValueAtTime(0.15, now);
+                    leadGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    lead.start(now);
+                    lead.stop(now + 0.1);
+                }
+                // Tension synth
+                if (beatCount % 4 === 0) {
+                    const synth = audioContext.createOscillator();
+                    const synthGain = audioContext.createGain();
+                    synth.type = 'sine';
+                    synth.frequency.value = 220 + Math.sin(beatCount * 0.5) * 50;
+                    synth.connect(synthGain);
+                    synthGain.connect(audioContext.destination);
+                    synthGain.gain.setValueAtTime(0.1, now);
+                    synthGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                    synth.start(now);
+                    synth.stop(now + 0.3);
+                }
+                beatCount++;
+            }
+            playBossBeat();
+            bossMusic.intervalId = setInterval(playBossBeat, 100);
+        }
+
+        function stopBossMusic() {
+            if (bossMusic) {
+                bossMusic.active = false;
+                if (bossMusic.intervalId) clearInterval(bossMusic.intervalId);
+                bossMusic = null;
+            }
+        }
+
+        function playBossDefeat() {
+            if (isMuted) return;
+            // Epic victory fanfare
+            [262, 330, 392, 523, 659, 784].forEach((freq, i) => {
+                setTimeout(() => playSound(freq, 'square', 0.3, 0.3), i * 100);
+            });
+        }
+
+        // === BOSS FUNCTIONS ===
+        function spawnBoss(levelNum) {
+            const bossData = BOSSES[levelNum];
+            if (!bossData) return;
+
+            // Clear regular enemies
+            enemies = [];
+            walls = [];
+            bombs = [];
+
+            const diff = getDiffSettings();
+            boss = {
+                ...bossData,
+                x: logicalWidth / 2,
+                y: -bossData.height,
+                targetY: 100,
+                health: Math.floor(bossData.health * (1 + (diff.speedMult - 1) * 0.5)),
+                maxHealth: Math.floor(bossData.maxHealth * (1 + (diff.speedMult - 1) * 0.5)),
+                shootTimer: 1,
+                moveTimer: 0,
+                moveDirX: 1,
+                moveDirY: 0,
+                phase: 0,
+                entering: true,
+                tauntIndex: 0
+            };
+            bossActive = true;
+
+            // Show boss UI
+            document.getElementById('bossHealthContainer').classList.add('show');
+            document.getElementById('bossName').textContent = bossData.name;
+            updateBossHealthBar();
+
+            // Start boss music
+            startBossMusic();
+
+            // Initial taunt
+            setTimeout(() => showBossTaunt(), 1000);
+        }
+
+        function updateBossHealthBar() {
+            if (!boss) return;
+            const percent = (boss.health / boss.maxHealth) * 100;
+            document.getElementById('bossHealthFill').style.width = percent + '%';
+        }
+
+        function showBossTaunt() {
+            if (!boss || !bossActive) return;
+            const taunt = boss.taunts[boss.tauntIndex % boss.taunts.length];
+            boss.tauntIndex++;
+            const tauntEl = document.getElementById('bossTaunt');
+            tauntEl.textContent = '"' + taunt + '"';
+            tauntEl.classList.add('show');
+            setTimeout(() => tauntEl.classList.remove('show'), 2500);
+        }
+
+        function bossAttack() {
+            if (!boss) return;
+            const diff = getDiffSettings();
+            const bulletSpeed = -300 * diff.speedMult;
+
+            switch (boss.attackPattern) {
+                case 'spread':
+                    // 5 bullets in a spread
+                    for (let i = -2; i <= 2; i++) {
+                        bullets.push({
+                            x: boss.x + i * 20, y: boss.y + boss.height / 2,
+                            speed: bulletSpeed, vx: i * 50, isEnemy: true, type: 'boss', width: 12, height: 12
+                        });
+                    }
+                    break;
+                case 'spiral':
+                    // Spiral pattern
+                    for (let i = 0; i < 8; i++) {
+                        const angle = (boss.phase + i * 45) * Math.PI / 180;
+                        bullets.push({
+                            x: boss.x, y: boss.y + boss.height / 2,
+                            speed: bulletSpeed * 0.8, vx: Math.cos(angle) * 150, isEnemy: true, type: 'boss', width: 10, height: 10
+                        });
+                    }
+                    boss.phase += 15;
+                    break;
+                case 'wave':
+                    // Wave of bullets
+                    for (let i = 0; i < 10; i++) {
+                        bullets.push({
+                            x: boss.x - 100 + i * 25, y: boss.y + boss.height / 2,
+                            speed: bulletSpeed, vx: Math.sin(i + boss.phase) * 30, isEnemy: true, type: 'boss', width: 8, height: 8
+                        });
+                    }
+                    boss.phase += 0.5;
+                    break;
+                case 'random':
+                    // Random burst
+                    for (let i = 0; i < 6; i++) {
+                        bullets.push({
+                            x: boss.x + (Math.random() - 0.5) * boss.width, y: boss.y + boss.height / 2,
+                            speed: bulletSpeed * (0.8 + Math.random() * 0.4), vx: (Math.random() - 0.5) * 200,
+                            isEnemy: true, type: 'boss', width: 10, height: 10
+                        });
+                    }
+                    break;
+                case 'all':
+                    // Final boss uses all patterns
+                    const pattern = Math.floor(boss.phase / 3) % 4;
+                    boss.attackPattern = ['spread', 'spiral', 'wave', 'random'][pattern];
+                    bossAttack();
+                    boss.attackPattern = 'all';
+                    boss.phase++;
+                    break;
+            }
+            playEnemyBazooka();
+        }
+
+        function updateBoss(dt) {
+            if (!boss) return;
+
+            const diff = getDiffSettings();
+
+            // Entry animation
+            if (boss.entering) {
+                boss.y += 100 * dt;
+                if (boss.y >= boss.targetY) {
+                    boss.y = boss.targetY;
+                    boss.entering = false;
+                }
+                return;
+            }
+
+            // Movement - side to side and up/down
+            boss.moveTimer += dt;
+            const moveSpeed = boss.speed * diff.speedMult;
+
+            // Horizontal movement
+            boss.x += boss.moveDirX * moveSpeed * dt;
+            if (boss.x < boss.width / 2 + 20) { boss.x = boss.width / 2 + 20; boss.moveDirX = 1; }
+            if (boss.x > logicalWidth - boss.width / 2 - 20) { boss.x = logicalWidth - boss.width / 2 - 20; boss.moveDirX = -1; }
+
+            // Vertical movement (slight bobbing + occasional dives)
+            boss.y = boss.targetY + Math.sin(boss.moveTimer * 2) * 30;
+            if (boss.moveTimer > 5) {
+                boss.moveDirX *= -1;
+                boss.moveTimer = 0;
+                showBossTaunt();
+            }
+
+            // Shooting
+            boss.shootTimer -= dt;
+            if (boss.shootTimer <= 0) {
+                bossAttack();
+                boss.shootTimer = boss.fireRate / diff.enemyFireMult;
+            }
+
+            // Taunt timer
+            bossTauntTimer += dt;
+            if (bossTauntTimer > 8) {
+                showBossTaunt();
+                bossTauntTimer = 0;
+            }
+        }
+
+        function drawBoss() {
+            if (!boss) return;
+
+            ctx.save();
+            ctx.translate(boss.x, boss.y);
+
+            // Glow effect
+            ctx.fillStyle = boss.color + '33';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, boss.width / 2 + 20, boss.height / 2 + 20, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (boss.type === 'aircraft') {
+                // Large aircraft boss
+                ctx.fillStyle = boss.color;
+                // Main body
+                ctx.beginPath();
+                ctx.moveTo(0, -boss.height / 2);
+                ctx.lineTo(-boss.width / 2, boss.height / 2);
+                ctx.lineTo(-boss.width / 4, boss.height / 3);
+                ctx.lineTo(boss.width / 4, boss.height / 3);
+                ctx.lineTo(boss.width / 2, boss.height / 2);
+                ctx.closePath();
+                ctx.fill();
+
+                // Wings
+                ctx.fillStyle = '#333';
+                ctx.beginPath();
+                ctx.moveTo(-boss.width / 4, 0);
+                ctx.lineTo(-boss.width / 2 - 30, boss.height / 4);
+                ctx.lineTo(-boss.width / 4, boss.height / 4);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(boss.width / 4, 0);
+                ctx.lineTo(boss.width / 2 + 30, boss.height / 4);
+                ctx.lineTo(boss.width / 4, boss.height / 4);
+                ctx.closePath();
+                ctx.fill();
+
+                // Cockpit
+                ctx.fillStyle = '#ff0000';
+                ctx.beginPath();
+                ctx.ellipse(0, -boss.height / 4, 15, 20, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Engine glow
+                ctx.fillStyle = '#ff6600';
+                const flicker = Math.sin(Date.now() / 50) * 5;
+                ctx.beginPath();
+                ctx.moveTo(-20, boss.height / 3);
+                ctx.lineTo(-10, boss.height / 2 + 15 + flicker);
+                ctx.lineTo(0, boss.height / 3);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(0, boss.height / 3);
+                ctx.lineTo(10, boss.height / 2 + 15 + flicker);
+                ctx.lineTo(20, boss.height / 3);
+                ctx.closePath();
+                ctx.fill();
+
+            } else {
+                // Monster boss
+                ctx.fillStyle = boss.color;
+
+                // Body
+                ctx.beginPath();
+                ctx.ellipse(0, 0, boss.width / 2, boss.height / 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Tentacles/appendages
+                const time = Date.now() / 200;
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI + Math.PI / 2;
+                    const wave = Math.sin(time + i) * 10;
+                    ctx.strokeStyle = boss.color;
+                    ctx.lineWidth = 8;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(angle) * boss.width / 3, Math.sin(angle) * boss.height / 3);
+                    ctx.quadraticCurveTo(
+                        Math.cos(angle) * boss.width / 2 + wave,
+                        Math.sin(angle) * boss.height / 2 + wave,
+                        Math.cos(angle) * (boss.width / 2 + 30),
+                        Math.sin(angle) * (boss.height / 2 + 20)
+                    );
+                    ctx.stroke();
+                }
+
+                // Eyes
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.ellipse(-25, -15, 20, 15, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(25, -15, 20, 15, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Pupils (follow player)
+                const dx = player.x - boss.x;
+                const dy = player.y - boss.y;
+                const dist = Math.hypot(dx, dy);
+                const px = (dx / dist) * 8 || 0;
+                const py = (dy / dist) * 5 || 0;
+                ctx.fillStyle = '#ff0000';
+                ctx.beginPath();
+                ctx.ellipse(-25 + px, -15 + py, 10, 10, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(25 + px, -15 + py, 10, 10, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Mouth
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.ellipse(0, 20, 30, 15, 0, 0, Math.PI);
+                ctx.fill();
+                // Teeth
+                ctx.fillStyle = '#fff';
+                for (let i = -3; i <= 3; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i * 8 - 4, 20);
+                    ctx.lineTo(i * 8, 30);
+                    ctx.lineTo(i * 8 + 4, 20);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+
+            // Health indicator flash when hit
+            if (boss.hitFlash) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.beginPath();
+                ctx.ellipse(boss.x, boss.y, boss.width / 2, boss.height / 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+                boss.hitFlash = false;
+            }
+        }
+
+        function damageBoss(damage) {
+            if (!boss) return;
+            boss.health -= damage;
+            boss.hitFlash = true;
+            updateBossHealthBar();
+            createExplosion(boss.x + (Math.random() - 0.5) * boss.width, boss.y + (Math.random() - 0.5) * boss.height, '#ffff00', 10);
+
+            if (boss.health <= 0) {
+                defeatBoss();
+            }
+        }
+
+        function defeatBoss() {
+            if (!boss) return;
+
+            // Epic explosion
+            for (let i = 0; i < 10; i++) {
+                setTimeout(() => {
+                    if (boss) {
+                        createBigExplosion(
+                            boss.x + (Math.random() - 0.5) * boss.width,
+                            boss.y + (Math.random() - 0.5) * boss.height
+                        );
+                        playBigExplosion();
+                    }
+                }, i * 150);
+            }
+
+            // Final explosion and cleanup
+            setTimeout(() => {
+                createBigExplosion(boss.x, boss.y);
+                for (let i = 0; i < 100; i++) {
+                    particles.push({
+                        x: boss.x, y: boss.y,
+                        vx: (Math.random() - 0.5) * 600,
+                        vy: (Math.random() - 0.5) * 600,
+                        size: Math.random() * 8 + 4,
+                        color: ['#ff0000', '#ff6600', '#ffff00', '#ffffff'][Math.floor(Math.random() * 4)],
+                        life: 1.5
+                    });
+                }
+
+                // Award points
+                score += boss.maxHealth * 50;
+                document.getElementById('score').textContent = score;
+
+                // Mark boss as defeated and advance level
+                bossDefeated.push(level);
+                level++;
+                if (level > 5) level = 5;
+                document.getElementById('levelDisplay').textContent = 'Level ' + level;
+
+                // Cleanup
+                boss = null;
+                bossActive = false;
+                document.getElementById('bossHealthContainer').classList.remove('show');
+                document.getElementById('bossTaunt').classList.remove('show');
+
+                // Stop boss music, play victory, resume normal music
+                stopBossMusic();
+                playBossDefeat();
+                setTimeout(() => {
+                    if (gameRunning && !bossActive) startBackgroundMusic(shieldActive);
+                }, 1500);
+
+            }, 1500);
         }
 
         // === BACKGROUND INITIALIZATION ===
@@ -1153,11 +1719,18 @@
 
         function checkLevelUp() {
             const newLevel = Math.min(5, Math.floor(score / levelUpScore) + 1);
-            if (newLevel > level) {
-                level = newLevel;
-                document.getElementById('levelDisplay').textContent = 'Level ' + level;
-                playLevelUp();
-                createExplosion(logicalWidth / 2, logicalHeight / 2, '#ffd700', 40);
+            if (newLevel > level && !bossActive) {
+                // Check if boss for current level has been defeated
+                if (!bossDefeated.includes(level)) {
+                    // Spawn boss for current level
+                    spawnBoss(level);
+                } else {
+                    // Boss already defeated, advance level
+                    level = newLevel;
+                    document.getElementById('levelDisplay').textContent = 'Level ' + level;
+                    playLevelUp();
+                    createExplosion(logicalWidth / 2, logicalHeight / 2, '#ffd700', 40);
+                }
             }
         }
 
@@ -1165,6 +1738,11 @@
             if (!gameRunning) return;
 
             const diff = getDiffSettings();
+
+            // Update boss if active
+            if (bossActive && boss) {
+                updateBoss(dt);
+            }
 
             // Player movement
             let pdx = 0, pdy = 0;
@@ -1177,14 +1755,21 @@
 
             const playerSpeedMult = getSpeedMultiplier();
             player.x += pdx * player.speed * playerSpeedMult * dt;
-            player.y += pdy * player.speed * playerSpeedMult * dt;
+            // During boss fight, limit vertical movement to bottom half
+            if (bossActive) {
+                player.y += pdy * player.speed * playerSpeedMult * dt * 0.5; // Slower vertical
+                player.y = Math.max(logicalHeight / 2 + 50, Math.min(logicalHeight - 30, player.y));
+            } else {
+                player.y += pdy * player.speed * playerSpeedMult * dt;
+                player.y = Math.max(30, Math.min(logicalHeight - 30, player.y));
+            }
             player.x = Math.max(30, Math.min(logicalWidth - 30, player.x));
-            player.y = Math.max(30, Math.min(logicalHeight - 30, player.y));
 
             if (autoFire) shoot();
 
             // Laser damage
             if (laserActive && currentWeapon === 'laser') {
+                // Damage enemies
                 enemies = enemies.filter(enemy => {
                     if (enemy.x > player.x - 15 && enemy.x < player.x + 15 && enemy.y < player.y) {
                         score += 100;
@@ -1196,10 +1781,18 @@
                     }
                     return true;
                 });
+                // Damage boss
+                if (boss && boss.x > player.x - 15 && boss.x < player.x + 15 && boss.y < player.y) {
+                    damageBoss(0.5 * dt * 60); // Continuous damage
+                }
             }
 
             // Update bullets
-            bullets = bullets.filter(b => { b.y -= b.speed * dt; return b.y > -20 && b.y < logicalHeight + 20; });
+            bullets = bullets.filter(b => {
+                b.y -= b.speed * dt;
+                if (b.vx) b.x += b.vx * dt; // Boss bullets have horizontal movement
+                return b.y > -20 && b.y < logicalHeight + 20 && b.x > -20 && b.x < logicalWidth + 20;
+            });
 
             // Update enemies
             enemies.forEach(e => {
@@ -1288,6 +1881,21 @@
                             checkLevelUp();
                         }
                     });
+
+                    // Boss collision
+                    if (boss && !bullet.isEnemy) {
+                        const bossCollision = Math.abs(bullet.x - boss.x) < boss.width / 2 &&
+                                              Math.abs(bullet.y - boss.y) < boss.height / 2;
+                        if (bossCollision) {
+                            bullets.splice(bi, 1);
+                            const damage = bullet.explosive ? 5 : (bullet.type === 'bazooka' ? 3 : 1);
+                            damageBoss(damage);
+                            if (bullet.explosive) {
+                                createBigExplosion(bullet.x, bullet.y);
+                                playBigExplosion();
+                            }
+                        }
+                    }
                 }
             });
 
@@ -1365,6 +1973,7 @@
             enemies.forEach(drawEnemy);
             powerups.forEach(drawPowerup);
             weaponPickups.forEach(drawWeaponPickup);
+            if (bossActive) drawBoss();
             drawParticles();
             if (gameRunning && lives > 0) {
                 drawLaser();
@@ -1386,7 +1995,8 @@
             update(dt);
             draw();
 
-            if (gameRunning) {
+            if (gameRunning && !bossActive) {
+                // Only spawn enemies/items when not fighting a boss
                 const diff = getDiffSettings();
                 // Spawn rate decreases (faster spawning) with level and difficulty
                 const baseSpawnRate = Math.max(0.2, (0.8 - level * 0.1) * diff.spawnMult);
@@ -1437,6 +2047,14 @@
             unlockedWeapons = ['pistol'];
             laserActive = false;
             deactivateShield();
+            // Reset boss state
+            boss = null;
+            bossActive = false;
+            bossDefeated = [];
+            bossTauntTimer = 0;
+            stopBossMusic();
+            document.getElementById('bossHealthContainer').classList.remove('show');
+            document.getElementById('bossTaunt').classList.remove('show');
             initBackground();
 
             document.getElementById('score').textContent = score;
@@ -1455,6 +2073,13 @@
         async function gameOver() {
             gameRunning = false;
             laserActive = false;
+            // Clean up boss state
+            boss = null;
+            bossActive = false;
+            stopBossMusic();
+            document.getElementById('bossHealthContainer').classList.remove('show');
+            document.getElementById('bossTaunt').classList.remove('show');
+
             document.getElementById('finalScore').textContent = score;
             document.getElementById('finalLevel').textContent = level;
             document.getElementById('finalDifficulty').textContent = getDiffSettings().name;
@@ -1485,6 +2110,12 @@
             if (!gameRunning) return;
             gameRunning = false;
             laserActive = false;
+            // Clean up boss state
+            boss = null;
+            bossActive = false;
+            stopBossMusic();
+            document.getElementById('bossHealthContainer').classList.remove('show');
+            document.getElementById('bossTaunt').classList.remove('show');
             stopBackgroundMusic();
             document.getElementById('startScreen').classList.remove('hidden');
             await renderLeaderboard('startLeaderboardList');
