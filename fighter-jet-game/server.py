@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple Flask server for Legion's Space Fight game.
+Flask server for Legion's Space Fight game.
 Serves static files, provides leaderboard API, and tracks live players.
 """
 
@@ -19,9 +19,12 @@ CORS(app)
 
 # Paths
 BASE_DIR = Path(__file__).parent
-GAMES_DIR = BASE_DIR / 'games'
-LEADERBOARD_FILE = BASE_DIR / 'leaderboard.json'
+DATA_DIR = BASE_DIR / 'data'
+LEADERBOARD_FILE = DATA_DIR / 'leaderboard.json'
 MAX_LEADERBOARD_SIZE = 10
+
+# Ensure data directory exists
+DATA_DIR.mkdir(exist_ok=True)
 
 # Active players tracking (in-memory)
 active_players = {}
@@ -57,10 +60,15 @@ def save_leaderboard(leaderboard):
     with open(LEADERBOARD_FILE, 'w') as f:
         json.dump(leaderboard, f, indent=2)
 
-@app.route('/games/<path:filename>')
-def serve_game(filename):
-    """Serve static game files."""
-    return send_from_directory(GAMES_DIR, filename)
+@app.route('/')
+def index():
+    """Serve the main game file."""
+    return send_from_directory(BASE_DIR, 'fighter-jet-game.html')
+
+@app.route('/fighter-jet-game.html')
+def serve_game():
+    """Serve the game file directly."""
+    return send_from_directory(BASE_DIR, 'fighter-jet-game.html')
 
 @app.route('/api/leaderboard', methods=['GET'])
 def get_scores():
@@ -178,17 +186,11 @@ def get_active_players():
         players = sorted(active_players.values(), key=lambda x: x['score'], reverse=True)
     return jsonify(players)
 
-@app.route('/')
-def index():
-    """Redirect to game."""
-    return '<a href="/games/fighter-jet-game.html">Play Legion\'s Space Fight</a>'
-
 if __name__ == '__main__':
     # Create empty leaderboard file if it doesn't exist
     if not LEADERBOARD_FILE.exists():
         save_leaderboard([])
 
-    print(f"Serving games from: {GAMES_DIR}")
     print(f"Leaderboard file: {LEADERBOARD_FILE}")
-    print("Starting server on http://0.0.0.0:5300")
-    app.run(host='0.0.0.0', port=5300, debug=False, threaded=True)
+    print("Starting server on http://0.0.0.0:8080")
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)

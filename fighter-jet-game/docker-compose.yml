@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  fighter-jet-game:
+    build: .
+    container_name: fighter-jet-game
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    networks:
+      - proxy-network
+    expose:
+      - "8080"
+
+networks:
+  proxy-network:
+    external: true
