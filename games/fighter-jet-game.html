@@ -141,20 +141,7 @@
         .leaderboard-list .rank { width: 25px; font-weight: bold; }
         .leaderboard-list .name { flex: 1; text-align: left; margin-left: 10px; }
         .leaderboard-list .score { font-weight: bold; }
-        #nameEntry { display: none; flex-direction: column; align-items: center; margin: 15px 0; }
-        #nameEntry.show { display: flex; }
-        #nameEntry p { color: #4ade80; margin-bottom: 10px; font-size: 14px; }
-        #nameInput {
-            padding: 10px 20px; font-size: 16px; border: 2px solid #4a6cf7; border-radius: 8px;
-            background: rgba(0, 0, 0, 0.5); color: #fff; text-align: center; width: 200px; margin-bottom: 10px;
-        }
-        #nameInput:focus { outline: none; border-color: #6af; }
-        #saveScoreBtn {
-            padding: 8px 25px; font-size: 14px; background: linear-gradient(135deg, #4ade80, #22c55e);
-            color: #000; border: none; border-radius: 20px; cursor: pointer; font-weight: bold;
-        }
-        #saveScoreBtn:hover { transform: scale(1.05); }
-        #bossHealthContainer {
+                #bossHealthContainer {
             position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
             width: 300px; display: none; flex-direction: column; align-items: center;
         }
@@ -181,11 +168,54 @@
             50% { transform: translateX(-50%) scale(1.05); }
         }
         #touchControls.show { display: block; }
+        /* Live Players Sidebar */
+        #livePlayersSidebar {
+            position: absolute; top: 60px; right: 10px; width: 160px;
+            background: rgba(0, 0, 0, 0.7); border: 2px solid rgba(100, 170, 255, 0.5);
+            border-radius: 10px; padding: 10px; display: none; z-index: 50;
+        }
+        #livePlayersSidebar.show { display: block; }
+        #livePlayersSidebar h4 { color: #6af; font-size: 12px; margin-bottom: 8px; text-align: center; }
+        .live-player {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 4px 6px; margin: 3px 0; border-radius: 4px; font-size: 11px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .live-player.you { background: rgba(100, 170, 255, 0.2); border: 1px solid #6af; }
+        .live-player .player-name { color: #fff; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .live-player .player-score { color: #4ade80; font-weight: bold; margin-left: 5px; }
+        .live-player .player-status { width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+        .live-player .player-status.lobby { background: #facc15; }
+        .live-player .player-status.playing { background: #4ade80; }
+        .live-player .player-status.boss { background: #ef4444; }
+        /* Name Entry on Start Screen */
+        .player-setup { margin: 15px 0; display: flex; flex-direction: column; align-items: center; }
+        .player-setup label { color: #aaa; font-size: 12px; margin-bottom: 5px; }
+        #playerNameInput {
+            padding: 8px 15px; font-size: 14px; border: 2px solid #4a6cf7; border-radius: 8px;
+            background: rgba(0, 0, 0, 0.5); color: #fff; text-align: center; width: 180px;
+        }
+        #playerNameInput::placeholder { color: #666; }
+        #playerNameInput:focus { outline: none; border-color: #6af; }
+        /* Live Players List on Start Screen */
+        .live-players-start { margin: 15px 0; text-align: center; }
+        .live-players-start h4 { color: #6af; font-size: 14px; margin-bottom: 10px; }
+        .live-players-start .player-count { color: #4ade80; font-size: 12px; margin-bottom: 8px; }
+        #lobbyPlayersList {
+            max-height: 100px; overflow-y: auto; background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px; padding: 5px;
+        }
+        #lobbyPlayersList .live-player { background: rgba(255, 255, 255, 0.05); }
         @media (max-width: 850px) {
             #gameCanvas { max-width: 100vw; max-height: 65vh; }
             #startScreen h1, #gameOverScreen h1 { font-size: 26px; }
             .controls { font-size: 11px; }
             .diff-btn { padding: 8px 14px; font-size: 12px; }
+            #livePlayersSidebar { width: 120px; top: 50px; right: 5px; padding: 6px; }
+            #livePlayersSidebar h4 { font-size: 10px; }
+            .live-player { font-size: 9px; padding: 3px 4px; }
+            .live-players-start { margin: 10px 0; }
+            #lobbyPlayersList { max-height: 80px; }
             .leaderboard { max-height: 120px; }
             .leaderboard-list li { font-size: 11px; padding: 4px 10px; }
             #bossHealthContainer { width: 200px; }
@@ -216,8 +246,16 @@
             <div id="bossHealthBar"><div id="bossHealthFill"></div></div>
         </div>
         <div id="bossTaunt"></div>
+        <div id="livePlayersSidebar">
+            <h4>🎮 LIVE PLAYERS</h4>
+            <div id="sidebarPlayersList"></div>
+        </div>
         <div id="startScreen">
             <h1>Legion's Space Fight</h1>
+            <div class="player-setup">
+                <label>Enter your name (or leave blank for random)</label>
+                <input type="text" id="playerNameInput" maxlength="12" placeholder="Your name...">
+            </div>
             <p class="color-label">Choose Your Jet</p>
             <div class="color-select">
                 <button class="color-btn blue selected" onclick="selectColor('blue')"></button>
@@ -238,6 +276,11 @@
                 <p>P or ESC to Pause</p>
                 <p style="color: #6af;">Collect: MG (Machine Gun) | BZ (Bazooka) | LS (Laser)</p>
             </div>
+            <div class="live-players-start">
+                <h4>🎮 Players Online</h4>
+                <div class="player-count" id="playerCount">0 players</div>
+                <div id="lobbyPlayersList"></div>
+            </div>
             <div class="leaderboard" id="startLeaderboard">
                 <h3>🏆 High Scores</h3>
                 <ul class="leaderboard-list" id="startLeaderboardList"></ul>
@@ -247,11 +290,7 @@
             <h2>Game Over</h2>
             <h1>Score: <span id="finalScore">0</span></h1>
             <p style="color: #aaa; margin-bottom: 10px;">Level <span id="finalLevel">1</span> | <span id="finalDifficulty">EASY</span></p>
-            <div id="nameEntry">
-                <p>🎉 New High Score! Enter your name:</p>
-                <input type="text" id="nameInput" maxlength="12" placeholder="Your name">
-                <button id="saveScoreBtn" onclick="saveHighScore()">Save Score</button>
-            </div>
+            <p id="scoreSavedMsg" style="color: #4ade80; margin-bottom: 10px; display: none;"></p>
             <div class="leaderboard" id="gameOverLeaderboard">
                 <h3>🏆 High Scores</h3>
                 <ul class="leaderboard-list" id="gameOverLeaderboardList"></ul>
@@ -293,7 +332,6 @@
         // === LEADERBOARD SYSTEM (Server-side JSON) ===
         const API_BASE = window.location.origin;
         const MAX_LEADERBOARD_SIZE = 10;
-        let pendingScore = 0;
         let cachedLeaderboard = [];
 
         async function fetchLeaderboard() {
@@ -368,24 +406,150 @@
             renderLeaderboardFromCache(listElementId);
         }
 
-        async function saveHighScore() {
-            const nameInput = document.getElementById('nameInput');
-            const name = nameInput.value.trim() || 'Anonymous';
-            await addHighScore(name, pendingScore, selectedDifficulty.toUpperCase(), level);
-            document.getElementById('nameEntry').classList.remove('show');
-            // Re-fetch and render both leaderboards to ensure sync
-            await fetchLeaderboard();
-            renderLeaderboardFromCache('gameOverLeaderboardList');
-            renderLeaderboardFromCache('startLeaderboardList');
-            nameInput.value = '';
+        // === LIVE PLAYERS SYSTEM ===
+        let myPlayerId = null;
+        let myPlayerName = '';
+        let livePlayers = [];
+        let playerPollInterval = null;
+
+        async function joinAsPlayer() {
+            const nameInput = document.getElementById('playerNameInput');
+            const enteredName = nameInput ? nameInput.value.trim() : '';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/players/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: enteredName,
+                        difficulty: selectedDifficulty.toUpperCase(),
+                        color: selectedColor
+                    })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    myPlayerId = data.playerId;
+                    myPlayerName = data.name;
+                    livePlayers = data.players || [];
+                    console.log('Joined as:', myPlayerName, 'ID:', myPlayerId);
+                    return true;
+                }
+            } catch (e) { console.error('Failed to join as player:', e); }
+            return false;
+        }
+
+        async function updatePlayerStatus(status) {
+            if (!myPlayerId) return;
+            try {
+                const response = await fetch(`${API_BASE}/api/players/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        playerId: myPlayerId,
+                        score: score,
+                        level: level,
+                        status: status,
+                        difficulty: selectedDifficulty.toUpperCase()
+                    })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    livePlayers = data.players || [];
+                    renderLivePlayers();
+                }
+            } catch (e) { console.error('Failed to update player status:', e); }
+        }
+
+        async function leaveAsPlayer() {
+            if (!myPlayerId) return;
+            try {
+                await fetch(`${API_BASE}/api/players/leave`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ playerId: myPlayerId })
+                });
+            } catch (e) { console.error('Failed to leave:', e); }
+            myPlayerId = null;
+        }
+
+        async function fetchActivePlayers() {
+            try {
+                const response = await fetch(`${API_BASE}/api/players/active`);
+                if (response.ok) {
+                    livePlayers = await response.json();
+                    renderLivePlayers();
+                    renderLobbyPlayers();
+                }
+            } catch (e) { console.error('Failed to fetch active players:', e); }
+        }
+
+        function renderLivePlayers() {
+            const sidebar = document.getElementById('sidebarPlayersList');
+            if (!sidebar) return;
+            if (livePlayers.length === 0) {
+                sidebar.innerHTML = '<div style="color: #666; font-size: 10px; text-align: center;">No players</div>';
+                return;
+            }
+            sidebar.innerHTML = livePlayers.map(p => {
+                const isYou = p.id === myPlayerId;
+                return `<div class="live-player ${isYou ? 'you' : ''}">
+                    <span class="player-status ${p.status}"></span>
+                    <span class="player-name">${p.name}${isYou ? ' (you)' : ''}</span>
+                    <span class="player-score">${p.score.toLocaleString()}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function renderLobbyPlayers() {
+            const lobby = document.getElementById('lobbyPlayersList');
+            const countEl = document.getElementById('playerCount');
+            if (!lobby || !countEl) return;
+
+            countEl.textContent = `${livePlayers.length} player${livePlayers.length !== 1 ? 's' : ''} online`;
+
+            if (livePlayers.length === 0) {
+                lobby.innerHTML = '<div style="color: #666; font-size: 10px; text-align: center; padding: 5px;">No players online</div>';
+                return;
+            }
+            lobby.innerHTML = livePlayers.map(p => {
+                const isYou = p.id === myPlayerId;
+                return `<div class="live-player ${isYou ? 'you' : ''}">
+                    <span class="player-status ${p.status}"></span>
+                    <span class="player-name">${p.name}${isYou ? ' (you)' : ''}</span>
+                    <span class="player-score">${p.score.toLocaleString()}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function startPlayerPolling() {
+            if (playerPollInterval) clearInterval(playerPollInterval);
+            playerPollInterval = setInterval(() => {
+                if (gameRunning && !gamePaused) {
+                    updatePlayerStatus(bossActive ? 'boss' : 'playing');
+                }
+            }, 1500);
+        }
+
+        function stopPlayerPolling() {
+            if (playerPollInterval) {
+                clearInterval(playerPollInterval);
+                playerPollInterval = null;
+            }
         }
 
         // Initialize leaderboard on page load
         document.addEventListener('DOMContentLoaded', () => {
             renderLeaderboard('startLeaderboardList');
-            document.getElementById('nameInput').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') saveHighScore();
-            });
+            // Start polling for lobby players
+            fetchActivePlayers();
+            setInterval(fetchActivePlayers, 3000);
+        });
+
+        // Leave on page unload
+        window.addEventListener('beforeunload', () => {
+            if (myPlayerId) {
+                navigator.sendBeacon(`${API_BASE}/api/players/leave`, JSON.stringify({ playerId: myPlayerId }));
+            }
         });
 
         // === DIFFICULTY SETTINGS (2x speed) ===
@@ -2103,6 +2267,11 @@
             if (isMobile) {
                 document.getElementById('touchControls').classList.add('show');
             }
+            // Join as live player and show sidebar
+            await joinAsPlayer();
+            document.getElementById('livePlayersSidebar').classList.add('show');
+            startPlayerPolling();
+            updatePlayerStatus('playing');
         }
 
         async function gameOver() {
@@ -2116,21 +2285,28 @@
             document.getElementById('bossHealthContainer').classList.remove('show');
             document.getElementById('bossTaunt').classList.remove('show');
             document.getElementById('touchControls').classList.remove('show');
+            // Clean up live players
+            stopPlayerPolling();
+            document.getElementById('livePlayersSidebar').classList.remove('show');
+            await leaveAsPlayer();
 
             document.getElementById('finalScore').textContent = score;
             document.getElementById('finalLevel').textContent = level;
             document.getElementById('finalDifficulty').textContent = getDiffSettings().name;
 
-            // Fetch latest leaderboard and check for high score
+            // Auto-save high score using player's name from start
+            const scoreSavedMsg = document.getElementById('scoreSavedMsg');
             await fetchLeaderboard();
-            pendingScore = score;
             if (isHighScore(score) && score > 0) {
-                document.getElementById('nameEntry').classList.add('show');
-                document.getElementById('nameInput').focus();
+                const playerName = myPlayerName || 'Anonymous';
+                await addHighScore(playerName, score, selectedDifficulty.toUpperCase(), level);
+                scoreSavedMsg.textContent = `🎉 High Score saved as "${playerName}"!`;
+                scoreSavedMsg.style.display = 'block';
             } else {
-                document.getElementById('nameEntry').classList.remove('show');
+                scoreSavedMsg.style.display = 'none';
             }
             renderLeaderboardFromCache('gameOverLeaderboardList');
+            renderLeaderboardFromCache('startLeaderboardList');
 
             document.getElementById('gameOverScreen').classList.remove('hidden');
             playGameOver();
@@ -2156,6 +2332,10 @@
             document.getElementById('bossTaunt').classList.remove('show');
             document.getElementById('pauseOverlay').classList.remove('show');
             document.getElementById('touchControls').classList.remove('show');
+            // Clean up live players
+            stopPlayerPolling();
+            document.getElementById('livePlayersSidebar').classList.remove('show');
+            await leaveAsPlayer();
             stopBackgroundMusic();
             document.getElementById('startScreen').classList.remove('hidden');
             await renderLeaderboard('startLeaderboardList');
