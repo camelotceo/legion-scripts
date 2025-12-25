@@ -226,57 +226,66 @@
         let backgroundMusic = null;
         let isMuted = false;
 
-        // === LEADERBOARD SYSTEM ===
-        const LEADERBOARD_KEY = 'legionSpaceFightLeaderboard';
+        // === LEADERBOARD SYSTEM (Server-side JSON) ===
+        const API_BASE = window.location.origin;
         const MAX_LEADERBOARD_SIZE = 10;
         let pendingScore = 0;
+        let cachedLeaderboard = [];
 
-        function getLeaderboard() {
+        async function fetchLeaderboard() {
             try {
-                const data = localStorage.getItem(LEADERBOARD_KEY);
-                return data ? JSON.parse(data) : [];
-            } catch (e) { return []; }
-        }
-
-        function saveLeaderboard(leaderboard) {
-            try {
-                localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(leaderboard));
-            } catch (e) { console.error('Failed to save leaderboard:', e); }
+                const response = await fetch(`${API_BASE}/api/leaderboard`);
+                if (response.ok) {
+                    cachedLeaderboard = await response.json();
+                    return cachedLeaderboard;
+                }
+            } catch (e) { console.error('Failed to fetch leaderboard:', e); }
+            return cachedLeaderboard;
         }
 
         function isHighScore(newScore) {
-            const leaderboard = getLeaderboard();
-            if (leaderboard.length < MAX_LEADERBOARD_SIZE) return true;
-            return newScore > leaderboard[leaderboard.length - 1].score;
+            if (cachedLeaderboard.length < MAX_LEADERBOARD_SIZE) return true;
+            return newScore > cachedLeaderboard[cachedLeaderboard.length - 1].score;
         }
 
-        function addHighScore(name, newScore, difficulty, level) {
-            const leaderboard = getLeaderboard();
-            leaderboard.push({ name: name.substring(0, 12), score: newScore, difficulty, level, date: Date.now() });
-            leaderboard.sort((a, b) => b.score - a.score);
-            if (leaderboard.length > MAX_LEADERBOARD_SIZE) leaderboard.pop();
-            saveLeaderboard(leaderboard);
-            return leaderboard;
+        async function addHighScore(name, newScore, difficulty, lvl) {
+            try {
+                const response = await fetch(`${API_BASE}/api/leaderboard`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, score: newScore, difficulty, level: lvl })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    cachedLeaderboard = data.leaderboard;
+                    return cachedLeaderboard;
+                }
+            } catch (e) { console.error('Failed to save score:', e); }
+            return cachedLeaderboard;
         }
 
-        function renderLeaderboard(listElementId) {
+        function renderLeaderboardFromCache(listElementId) {
             const listEl = document.getElementById(listElementId);
-            const leaderboard = getLeaderboard();
-            if (leaderboard.length === 0) {
+            if (cachedLeaderboard.length === 0) {
                 listEl.innerHTML = '<li style="justify-content: center; color: #666;">No scores yet</li>';
                 return;
             }
-            listEl.innerHTML = leaderboard.map((entry, i) =>
+            listEl.innerHTML = cachedLeaderboard.map((entry, i) =>
                 `<li><span class="rank">${i + 1}.</span><span class="name">${entry.name}</span><span class="score">${entry.score.toLocaleString()}</span></li>`
             ).join('');
         }
 
-        function saveHighScore() {
+        async function renderLeaderboard(listElementId) {
+            await fetchLeaderboard();
+            renderLeaderboardFromCache(listElementId);
+        }
+
+        async function saveHighScore() {
             const nameInput = document.getElementById('nameInput');
             const name = nameInput.value.trim() || 'Anonymous';
-            addHighScore(name, pendingScore, selectedDifficulty.toUpperCase(), level);
+            await addHighScore(name, pendingScore, selectedDifficulty.toUpperCase(), level);
             document.getElementById('nameEntry').classList.remove('show');
-            renderLeaderboard('gameOverLeaderboardList');
+            renderLeaderboardFromCache('gameOverLeaderboardList');
             nameInput.value = '';
         }
 
@@ -1413,14 +1422,15 @@
             startBackgroundMusic(false);
         }
 
-        function gameOver() {
+        async function gameOver() {
             gameRunning = false;
             laserActive = false;
             document.getElementById('finalScore').textContent = score;
             document.getElementById('finalLevel').textContent = level;
             document.getElementById('finalDifficulty').textContent = getDiffSettings().name;
 
-            // Check for high score
+            // Fetch latest leaderboard and check for high score
+            await fetchLeaderboard();
             pendingScore = score;
             if (isHighScore(score) && score > 0) {
                 document.getElementById('nameEntry').classList.add('show');
@@ -1428,17 +1438,17 @@
             } else {
                 document.getElementById('nameEntry').classList.remove('show');
             }
-            renderLeaderboard('gameOverLeaderboardList');
+            renderLeaderboardFromCache('gameOverLeaderboardList');
 
             document.getElementById('gameOverScreen').classList.remove('hidden');
             playGameOver();
             stopBackgroundMusic();
         }
 
-        function backToMenu() {
+        async function backToMenu() {
             document.getElementById('gameOverScreen').classList.add('hidden');
             document.getElementById('startScreen').classList.remove('hidden');
-            renderLeaderboard('startLeaderboardList');
+            await renderLeaderboard('startLeaderboardList');
         }
 
         // === CONTROLS ===
