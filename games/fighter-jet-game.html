@@ -237,10 +237,19 @@
 
         async function fetchLeaderboard() {
             try {
-                const response = await fetch(`${API_BASE}/api/leaderboard`);
+                const url = `${API_BASE}/api/leaderboard`;
+                const response = await fetch(url);
                 if (response.ok) {
-                    cachedLeaderboard = await response.json();
+                    const text = await response.text();
+                    try {
+                        cachedLeaderboard = JSON.parse(text);
+                    } catch (parseErr) {
+                        console.error('Failed to parse leaderboard JSON:', text.substring(0, 100));
+                        return cachedLeaderboard;
+                    }
                     return cachedLeaderboard;
+                } else {
+                    console.error('Leaderboard fetch failed:', response.status, response.statusText);
                 }
             } catch (e) { console.error('Failed to fetch leaderboard:', e); }
             return cachedLeaderboard;
@@ -253,15 +262,24 @@
 
         async function addHighScore(name, newScore, difficulty, lvl) {
             try {
-                const response = await fetch(`${API_BASE}/api/leaderboard`, {
+                const url = `${API_BASE}/api/leaderboard`;
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, score: newScore, difficulty, level: lvl })
                 });
                 if (response.ok) {
-                    const data = await response.json();
-                    cachedLeaderboard = data.leaderboard;
+                    const text = await response.text();
+                    try {
+                        const data = JSON.parse(text);
+                        cachedLeaderboard = data.leaderboard || [];
+                        console.log('Score saved successfully:', cachedLeaderboard);
+                    } catch (parseErr) {
+                        console.error('Failed to parse save response:', text.substring(0, 100));
+                    }
                     return cachedLeaderboard;
+                } else {
+                    console.error('Save score failed:', response.status, response.statusText);
                 }
             } catch (e) { console.error('Failed to save score:', e); }
             return cachedLeaderboard;
@@ -269,11 +287,17 @@
 
         function renderLeaderboardFromCache(listElementId) {
             const listEl = document.getElementById(listElementId);
-            if (cachedLeaderboard.length === 0) {
+            if (!listEl) {
+                console.error('Leaderboard element not found:', listElementId);
+                return;
+            }
+            if (!cachedLeaderboard || cachedLeaderboard.length === 0) {
                 listEl.innerHTML = '<li style="justify-content: center; color: #666;">No scores yet</li>';
                 return;
             }
-            listEl.innerHTML = cachedLeaderboard.map((entry, i) =>
+            // Show top 10
+            const top10 = cachedLeaderboard.slice(0, 10);
+            listEl.innerHTML = top10.map((entry, i) =>
                 `<li><span class="rank">${i + 1}.</span><span class="name">${entry.name}</span><span class="score">${entry.score.toLocaleString()}</span></li>`
             ).join('');
         }
