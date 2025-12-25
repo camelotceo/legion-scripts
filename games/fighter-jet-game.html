@@ -188,38 +188,79 @@
         .live-player .player-status.lobby { background: #facc15; }
         .live-player .player-status.playing { background: #4ade80; }
         .live-player .player-status.boss { background: #ef4444; }
-        /* Name Entry on Start Screen */
-        .player-setup { margin: 15px 0; display: flex; flex-direction: column; align-items: center; }
-        .player-setup label { color: #aaa; font-size: 12px; margin-bottom: 5px; }
+        /* Modal Styles */
+        .modal-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); display: none; justify-content: center;
+            align-items: center; z-index: 300; border-radius: 8px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: linear-gradient(135deg, #1a1a3e, #2a2a4e); border: 2px solid #4a6cf7;
+            border-radius: 15px; padding: 25px; max-width: 350px; width: 90%;
+            text-align: center; box-shadow: 0 0 30px rgba(100, 100, 255, 0.4);
+        }
+        .modal h2 { color: #6af; margin-bottom: 20px; font-size: 22px; }
+        .modal-section { margin: 15px 0; }
+        .modal-section label { color: #aaa; font-size: 12px; display: block; margin-bottom: 8px; }
         #playerNameInput {
-            padding: 8px 15px; font-size: 14px; border: 2px solid #4a6cf7; border-radius: 8px;
-            background: rgba(0, 0, 0, 0.5); color: #fff; text-align: center; width: 180px;
+            padding: 10px 15px; font-size: 14px; border: 2px solid #4a6cf7; border-radius: 8px;
+            background: rgba(0, 0, 0, 0.5); color: #fff; text-align: center; width: 100%;
         }
         #playerNameInput::placeholder { color: #666; }
         #playerNameInput:focus { outline: none; border-color: #6af; }
-        /* Live Players List on Start Screen */
-        .live-players-start { margin: 15px 0; text-align: center; }
-        .live-players-start h4 { color: #6af; font-size: 14px; margin-bottom: 10px; }
-        .live-players-start .player-count { color: #4ade80; font-size: 12px; margin-bottom: 8px; }
-        #lobbyPlayersList {
-            max-height: 100px; overflow-y: auto; background: rgba(0, 0, 0, 0.3);
-            border-radius: 8px; padding: 5px;
+        .modal .color-select { margin: 10px 0; }
+        .modal .difficulty-btns { flex-wrap: wrap; }
+        .modal .diff-btn { margin: 3px; padding: 8px 15px; font-size: 12px; }
+        .modal-btn {
+            padding: 12px 30px; font-size: 16px; margin-top: 15px;
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            color: #000; border: none; border-radius: 25px; cursor: pointer; font-weight: bold;
         }
-        #lobbyPlayersList .live-player { background: rgba(255, 255, 255, 0.05); }
+        .modal-btn:hover { transform: scale(1.05); }
+        /* Instructions Modal */
+        #instructionsModal .modal { max-width: 400px; }
+        #instructionsModal .instructions-content { text-align: left; color: #ccc; font-size: 13px; line-height: 1.8; }
+        #instructionsModal .instructions-content p { margin: 8px 0; }
+        #instructionsModal .key { background: #4a6cf7; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+        #instructionsModal .pickup { color: #6af; }
+        .close-modal {
+            padding: 10px 25px; font-size: 14px; margin-top: 15px;
+            background: #555; color: #fff; border: none; border-radius: 20px; cursor: pointer;
+        }
+        .close-modal:hover { background: #666; }
+        /* Start screen buttons */
+        .start-buttons { display: flex; gap: 10px; margin: 15px 0; }
+        .btn-secondary {
+            padding: 10px 20px; font-size: 14px; background: transparent;
+            border: 2px solid #6af; color: #6af; border-radius: 25px; cursor: pointer;
+        }
+        .btn-secondary:hover { background: rgba(100, 170, 255, 0.2); }
+        /* Lobby sidebar (same style as game sidebar) */
+        #lobbySidebar {
+            position: absolute; top: 60px; left: 10px; width: 160px;
+            background: rgba(0, 0, 0, 0.7); border: 2px solid rgba(100, 170, 255, 0.5);
+            border-radius: 10px; padding: 10px; z-index: 50;
+        }
+        #lobbySidebar h4 { color: #6af; font-size: 12px; margin-bottom: 8px; text-align: center; }
+        #lobbySidebar .player-count { color: #4ade80; font-size: 10px; text-align: center; margin-bottom: 5px; }
         @media (max-width: 850px) {
             #gameCanvas { max-width: 100vw; max-height: 65vh; }
             #startScreen h1, #gameOverScreen h1 { font-size: 26px; }
-            .controls { font-size: 11px; }
             .diff-btn { padding: 8px 14px; font-size: 12px; }
             #livePlayersSidebar { width: 120px; top: 50px; right: 5px; padding: 6px; }
             #livePlayersSidebar h4 { font-size: 10px; }
+            #lobbySidebar { width: 120px; top: 50px; left: 5px; padding: 6px; }
+            #lobbySidebar h4 { font-size: 10px; }
             .live-player { font-size: 9px; padding: 3px 4px; }
-            .live-players-start { margin: 10px 0; }
-            #lobbyPlayersList { max-height: 80px; }
             .leaderboard { max-height: 120px; }
             .leaderboard-list li { font-size: 11px; padding: 4px 10px; }
             #bossHealthContainer { width: 200px; }
             #bossTaunt { font-size: 12px; }
+            .modal { padding: 20px; max-width: 300px; }
+            .modal h2 { font-size: 18px; }
+            .modal .diff-btn { padding: 6px 12px; font-size: 11px; }
+            .start-buttons { flex-direction: column; }
         }
     </style>
 </head>
@@ -250,40 +291,65 @@
             <h4>🎮 LIVE PLAYERS</h4>
             <div id="sidebarPlayersList"></div>
         </div>
+        <div id="lobbySidebar">
+            <h4>🎮 PLAYERS ONLINE</h4>
+            <div class="player-count" id="playerCount">0 players</div>
+            <div id="lobbyPlayersList"></div>
+        </div>
         <div id="startScreen">
             <h1>Legion's Space Fight</h1>
-            <div class="player-setup">
-                <label>Enter your name (or leave blank for random)</label>
-                <input type="text" id="playerNameInput" maxlength="12" placeholder="Your name...">
-            </div>
-            <p class="color-label">Choose Your Jet</p>
-            <div class="color-select">
-                <button class="color-btn blue selected" onclick="selectColor('blue')"></button>
-                <button class="color-btn pink" onclick="selectColor('pink')"></button>
-            </div>
-            <div class="difficulty-section">
-                <h3>Select Difficulty</h3>
-                <div class="difficulty-btns">
-                    <button class="diff-btn easy selected" onclick="selectDifficulty('easy')">EASY</button>
-                    <button class="diff-btn medium" onclick="selectDifficulty('medium')">MEDIUM</button>
-                    <button class="diff-btn hard" onclick="selectDifficulty('hard')">HARD</button>
-                    <button class="diff-btn expert" onclick="selectDifficulty('expert')">EXPERT</button>
-                </div>
-            </div>
-            <button class="btn" onclick="startGame()">Start Game</button>
-            <div class="controls">
-                <p>WASD/Arrows to Move | Space to Shoot | Q to Swap Weapon</p>
-                <p>P or ESC to Pause</p>
-                <p style="color: #6af;">Collect: MG (Machine Gun) | BZ (Bazooka) | LS (Laser)</p>
-            </div>
-            <div class="live-players-start">
-                <h4>🎮 Players Online</h4>
-                <div class="player-count" id="playerCount">0 players</div>
-                <div id="lobbyPlayersList"></div>
+            <div class="start-buttons">
+                <button class="btn" onclick="openSetupModal()">Play Game</button>
+                <button class="btn-secondary" onclick="openInstructionsModal()">How to Play</button>
             </div>
             <div class="leaderboard" id="startLeaderboard">
                 <h3>🏆 High Scores</h3>
                 <ul class="leaderboard-list" id="startLeaderboardList"></ul>
+            </div>
+        </div>
+        <!-- Setup Modal -->
+        <div id="setupModal" class="modal-overlay">
+            <div class="modal">
+                <h2>Game Setup</h2>
+                <div class="modal-section">
+                    <label>Your Name (or leave blank for random)</label>
+                    <input type="text" id="playerNameInput" maxlength="12" placeholder="Enter name...">
+                </div>
+                <div class="modal-section">
+                    <label>Choose Your Jet</label>
+                    <div class="color-select">
+                        <button class="color-btn blue selected" onclick="selectColor('blue')"></button>
+                        <button class="color-btn pink" onclick="selectColor('pink')"></button>
+                    </div>
+                </div>
+                <div class="modal-section">
+                    <label>Select Difficulty</label>
+                    <div class="difficulty-btns">
+                        <button class="diff-btn easy selected" onclick="selectDifficulty('easy')">EASY</button>
+                        <button class="diff-btn medium" onclick="selectDifficulty('medium')">MEDIUM</button>
+                        <button class="diff-btn hard" onclick="selectDifficulty('hard')">HARD</button>
+                        <button class="diff-btn expert" onclick="selectDifficulty('expert')">EXPERT</button>
+                    </div>
+                </div>
+                <button class="modal-btn" onclick="startGame()">Start Game</button>
+            </div>
+        </div>
+        <!-- Instructions Modal -->
+        <div id="instructionsModal" class="modal-overlay">
+            <div class="modal">
+                <h2>How to Play</h2>
+                <div class="instructions-content">
+                    <p><span class="key">WASD</span> or <span class="key">Arrows</span> - Move your jet</p>
+                    <p><span class="key">Space</span> - Shoot</p>
+                    <p><span class="key">Q</span> - Swap weapon</p>
+                    <p><span class="key">P</span> or <span class="key">ESC</span> - Pause</p>
+                    <p style="margin-top: 15px; color: #6af;">Collect power-ups:</p>
+                    <p><span class="pickup">MG</span> - Machine Gun</p>
+                    <p><span class="pickup">BZ</span> - Bazooka</p>
+                    <p><span class="pickup">LS</span> - Laser Beam</p>
+                    <p style="margin-top: 15px; color: #ffd700;">Defeat bosses to advance levels!</p>
+                </div>
+                <button class="close-modal" onclick="closeInstructionsModal()">Got it!</button>
             </div>
         </div>
         <div id="gameOverScreen" class="hidden">
@@ -702,6 +768,23 @@
             selectedDifficulty = diff;
             document.querySelectorAll('.diff-btn').forEach(btn => btn.classList.remove('selected'));
             document.querySelector('.diff-btn.' + diff).classList.add('selected');
+        }
+
+        // Modal functions
+        function openSetupModal() {
+            document.getElementById('setupModal').classList.add('show');
+        }
+
+        function closeSetupModal() {
+            document.getElementById('setupModal').classList.remove('show');
+        }
+
+        function openInstructionsModal() {
+            document.getElementById('instructionsModal').classList.add('show');
+        }
+
+        function closeInstructionsModal() {
+            document.getElementById('instructionsModal').classList.remove('show');
         }
 
         const player = {
@@ -2227,8 +2310,10 @@
 
         async function startGame() {
             if (audioContext.state === 'suspended') await audioContext.resume();
+            closeSetupModal();
             document.getElementById('startScreen').classList.add('hidden');
             document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('lobbySidebar').style.display = 'none';
 
             const diff = getDiffSettings();
             score = 0; lives = diff.lives; level = 1;
@@ -2316,6 +2401,7 @@
         async function backToMenu() {
             document.getElementById('gameOverScreen').classList.add('hidden');
             document.getElementById('startScreen').classList.remove('hidden');
+            document.getElementById('lobbySidebar').style.display = 'block';
             await renderLeaderboard('startLeaderboardList');
         }
 
@@ -2338,6 +2424,7 @@
             await leaveAsPlayer();
             stopBackgroundMusic();
             document.getElementById('startScreen').classList.remove('hidden');
+            document.getElementById('lobbySidebar').style.display = 'block';
             await renderLeaderboard('startLeaderboardList');
         }
 
