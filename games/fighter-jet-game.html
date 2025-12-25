@@ -26,12 +26,14 @@
         #levelDisplay { color: #ffd700; font-weight: bold; }
         #difficultyDisplay { color: #ff6b6b; font-size: 12px; }
         #weaponDisplay { color: #0ff; font-size: 14px; }
-        #muteButton {
+        #muteButton, #quitButton {
             background: rgba(100, 100, 255, 0.3); border: 2px solid rgba(255, 255, 255, 0.5);
             color: #fff; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 14px;
         }
-        #muteButton:hover { background: rgba(100, 100, 255, 0.5); }
+        #muteButton:hover, #quitButton:hover { background: rgba(100, 100, 255, 0.5); }
         #muteButton.muted { background: rgba(255, 100, 100, 0.3); border-color: rgba(255, 100, 100, 0.7); }
+        #quitButton { background: rgba(255, 100, 100, 0.3); border-color: rgba(255, 100, 100, 0.7); margin-top: 5px; }
+        #quitButton:hover { background: rgba(255, 100, 100, 0.5); }
         #startScreen, #gameOverScreen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -153,6 +155,7 @@
             </div>
             <div class="ui-center">
                 <button id="muteButton" onclick="toggleMute()">🔊</button>
+                <button id="quitButton" onclick="quitGame()">QUIT</button>
                 <span id="weaponDisplay">PISTOL [Q]</span>
             </div>
             <div class="ui-right">
@@ -177,7 +180,7 @@
             </div>
             <button class="btn" onclick="startGame()">Start Game</button>
             <div class="controls">
-                <p>WASD/Arrows to Move | Space to Shoot | Q to Switch Weapon</p>
+                <p>WASD/Arrows to Move | Space to Shoot | Q to Switch Weapon | ESC to Quit</p>
                 <p style="color: #6af;">Collect: MG (Machine Gun) | BZ (Bazooka) | LS (Laser)</p>
             </div>
             <div class="leaderboard" id="startLeaderboard">
@@ -285,7 +288,10 @@
             const name = nameInput.value.trim() || 'Anonymous';
             await addHighScore(name, pendingScore, selectedDifficulty.toUpperCase(), level);
             document.getElementById('nameEntry').classList.remove('show');
+            // Re-fetch and render both leaderboards to ensure sync
+            await fetchLeaderboard();
             renderLeaderboardFromCache('gameOverLeaderboardList');
+            renderLeaderboardFromCache('startLeaderboardList');
             nameInput.value = '';
         }
 
@@ -1451,11 +1457,21 @@
             await renderLeaderboard('startLeaderboardList');
         }
 
+        async function quitGame() {
+            if (!gameRunning) return;
+            gameRunning = false;
+            laserActive = false;
+            stopBackgroundMusic();
+            document.getElementById('startScreen').classList.remove('hidden');
+            await renderLeaderboard('startLeaderboardList');
+        }
+
         // === CONTROLS ===
         document.addEventListener('keydown', (e) => {
             keys[e.code] = true;
             if (e.code === 'Space' && gameRunning) { shoot(); e.preventDefault(); }
             if (e.code === 'KeyQ' && gameRunning) { switchWeapon(); e.preventDefault(); }
+            if (e.code === 'Escape' && gameRunning) { quitGame(); e.preventDefault(); }
         });
         document.addEventListener('keyup', (e) => {
             keys[e.code] = false;
