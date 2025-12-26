@@ -55,6 +55,61 @@
         }
         #gameOverScreen h1 { font-size: 28px; color: #fff; }
         #gameOverScreen h2 { font-size: 22px; margin-bottom: 10px; color: #f66; }
+        /* Victory Screen */
+        #victoryScreen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            background: linear-gradient(135deg, #0a0a2e 0%, #1a0a3e 50%, #0a1a2e 100%);
+            z-index: 1000; overflow-y: auto; padding: 20px; box-sizing: border-box;
+        }
+        #victoryScreen.show { display: flex; }
+        #victoryScreen h1 {
+            font-size: 48px; color: #ffd700; text-shadow: 0 0 30px #ffd700, 0 0 60px #ff8c00;
+            margin-bottom: 10px; animation: victoryPulse 1s ease-in-out infinite;
+        }
+        @keyframes victoryPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        #victoryScreen h2 { font-size: 24px; color: #4ade80; margin-bottom: 20px; }
+        .victory-stats {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;
+            background: rgba(0,0,0,0.5); padding: 20px; border-radius: 15px;
+            border: 2px solid #ffd700; margin-bottom: 20px; max-width: 400px;
+        }
+        .victory-stat { text-align: center; }
+        .victory-stat .label { color: #aaa; font-size: 12px; }
+        .victory-stat .value { color: #fff; font-size: 24px; font-weight: bold; }
+        .boss-gallery {
+            display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+            margin: 20px 0; max-width: 600px;
+        }
+        .boss-gallery .boss-card {
+            background: rgba(0,0,0,0.6); border: 2px solid #666; border-radius: 10px;
+            padding: 10px; text-align: center; width: 80px;
+        }
+        .boss-gallery .boss-card.defeated { border-color: #4ade80; }
+        .boss-gallery .boss-card .boss-icon { font-size: 30px; }
+        .boss-gallery .boss-card .boss-name { font-size: 8px; color: #aaa; margin-top: 5px; }
+        .victory-email {
+            margin: 20px 0; text-align: center;
+        }
+        .victory-email input {
+            padding: 12px 20px; font-size: 16px; border-radius: 25px;
+            border: 2px solid #ffd700; background: rgba(0,0,0,0.5);
+            color: #fff; width: 280px; margin-right: 10px;
+        }
+        .victory-email button {
+            padding: 12px 25px; font-size: 16px; border-radius: 25px;
+            border: none; background: linear-gradient(135deg, #ffd700, #ff8c00);
+            color: #000; font-weight: bold; cursor: pointer;
+        }
+        .victory-email button:hover { transform: scale(1.05); }
+        .victory-email .saved { color: #4ade80; margin-top: 10px; }
+        #confettiCanvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 1001;
+        }
         .btn {
             padding: 12px 35px; font-size: 18px;
             background: linear-gradient(135deg, #4a6cf7, #6a4cf7);
@@ -550,6 +605,45 @@
             <button class="btn" onclick="startGame()">Play Again</button>
             <button class="btn" style="background: #555;" onclick="backToMenu()">Menu</button>
         </div>
+
+        <!-- Victory Screen -->
+        <div id="victoryScreen">
+            <canvas id="confettiCanvas"></canvas>
+            <h1>🏆 VICTORY! 🏆</h1>
+            <h2>You have conquered Legion Supreme!</h2>
+
+            <div class="victory-stats">
+                <div class="victory-stat">
+                    <div class="label">FINAL SCORE</div>
+                    <div class="value" id="victoryScore">0</div>
+                </div>
+                <div class="victory-stat">
+                    <div class="label">TIME PLAYED</div>
+                    <div class="value" id="victoryTime">0:00</div>
+                </div>
+                <div class="victory-stat">
+                    <div class="label">ENEMIES DESTROYED</div>
+                    <div class="value" id="victoryEnemies">0</div>
+                </div>
+                <div class="victory-stat">
+                    <div class="label">BOSSES DEFEATED</div>
+                    <div class="value" id="victoryBosses">6</div>
+                </div>
+            </div>
+
+            <h3 style="color: #ffd700; margin-bottom: 10px;">⚔️ Bosses Vanquished ⚔️</h3>
+            <div class="boss-gallery" id="bossGallery"></div>
+
+            <div class="victory-email">
+                <p style="color: #aaa; margin-bottom: 10px;">Enter your email to save your legendary victory!</p>
+                <input type="email" id="victoryEmail" placeholder="your@email.com">
+                <button onclick="saveVictoryEmail()">Save</button>
+                <p class="saved" id="emailSavedMsg" style="display: none;">✓ Victory saved!</p>
+            </div>
+
+            <button class="btn" style="margin-top: 20px;" onclick="closeVictoryScreen()">Play Again</button>
+        </div>
+
         <div id="pauseOverlay">
             <h2>PAUSED</h2>
             <button class="pause-btn" onclick="resumeGame()">Resume</button>
@@ -1564,11 +1658,14 @@
         let score = 0;
         let lives = 3;
         let level = 1;
-        const levelUpScore = 1000;
+        // Boss spawn thresholds: 1k, 3k, 5k, 7k, 9k, 11k
+        const bossThresholds = { 1: 1000, 2: 3000, 3: 5000, 4: 7000, 5: 9000, 6: 11000 };
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 850;
+        let isInvincible = false; // Debug mode for unlimited lives
+        let totalEnemiesKilled = 0; // Track for ending stats
 
-        // === LEVEL SPEED MULTIPLIERS (2x base) ===
-        const levelSpeeds = { 1: 1.0, 2: 1.2, 3: 1.4, 4: 1.6, 5: 1.8 };
+        // === LEVEL SPEED MULTIPLIERS ===
+        const levelSpeeds = { 1: 1.0, 2: 1.2, 3: 1.4, 4: 1.6, 5: 1.8, 6: 2.2 };
 
         // === BACKGROUND OBJECTS ===
         let stars = [];
@@ -1669,6 +1766,26 @@
                     "THIS IS YOUR DOOM!"
                 ],
                 attackPattern: 'all'
+            },
+            6: {
+                name: 'LEGION SUPREME',
+                type: 'ultimate',
+                health: 150, maxHealth: 150,
+                width: 280, height: 180,
+                speed: 250, fireRate: 0.2,
+                color: '#FF0080',
+                taunts: [
+                    "I AM LEGION! THE ULTIMATE DESTROYER!",
+                    "ALL WHO CAME BEFORE ME WERE NOTHING!",
+                    "YOU HAVE SEALED YOUR FATE!",
+                    "WITNESS THE POWER OF A GOD!",
+                    "THIS UNIVERSE BELONGS TO ME!",
+                    "YOUR VICTORY ENDS NOW!",
+                    "I HAVE WAITED EONS FOR THIS!",
+                    "TREMBLE BEFORE LEGION SUPREME!"
+                ],
+                attackPattern: 'ultimate',
+                isSuper: true
             }
         };
 
@@ -1934,6 +2051,179 @@
             });
         }
 
+        function playVictoryMusic() {
+            if (isMuted) return;
+            // Epic victory theme - triumphant melody
+            const melody = [
+                { freq: 523, delay: 0 },    // C5
+                { freq: 659, delay: 200 },  // E5
+                { freq: 784, delay: 400 },  // G5
+                { freq: 1047, delay: 600 }, // C6
+                { freq: 784, delay: 900 },  // G5
+                { freq: 1047, delay: 1100 }, // C6
+                { freq: 1319, delay: 1400 }, // E6
+                { freq: 1568, delay: 1700 }, // G6
+            ];
+            melody.forEach(note => {
+                setTimeout(() => playSound(note.freq, 'square', 0.4, 0.5), note.delay);
+            });
+            // Repeat with harmony
+            setTimeout(() => {
+                melody.forEach(note => {
+                    setTimeout(() => playSound(note.freq * 1.25, 'sine', 0.2, 0.4), note.delay);
+                });
+            }, 2000);
+        }
+
+        // === CONFETTI ANIMATION ===
+        let confettiParticles = [];
+        let confettiAnimationId = null;
+
+        function startConfetti() {
+            const canvas = document.getElementById('confettiCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const colors = ['#ffd700', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6', '#fbbf24', '#a78bfa'];
+
+            // Create confetti particles
+            for (let i = 0; i < 150; i++) {
+                confettiParticles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height - canvas.height,
+                    size: Math.random() * 10 + 5,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    speedY: Math.random() * 3 + 2,
+                    speedX: (Math.random() - 0.5) * 4,
+                    rotation: Math.random() * 360,
+                    rotationSpeed: (Math.random() - 0.5) * 10
+                });
+            }
+
+            function animateConfetti() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                confettiParticles.forEach(p => {
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rotation * Math.PI / 180);
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+                    ctx.restore();
+
+                    p.y += p.speedY;
+                    p.x += p.speedX;
+                    p.rotation += p.rotationSpeed;
+
+                    // Reset when off screen
+                    if (p.y > canvas.height) {
+                        p.y = -20;
+                        p.x = Math.random() * canvas.width;
+                    }
+                });
+
+                confettiAnimationId = requestAnimationFrame(animateConfetti);
+            }
+
+            animateConfetti();
+        }
+
+        function stopConfetti() {
+            if (confettiAnimationId) {
+                cancelAnimationFrame(confettiAnimationId);
+                confettiAnimationId = null;
+            }
+            confettiParticles = [];
+            const canvas = document.getElementById('confettiCanvas');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        // === VICTORY SCREEN ===
+        function showVictoryScreen() {
+            gameRunning = false;
+            stopBackgroundMusic();
+            stopBossMusic();
+
+            // Update stats
+            document.getElementById('victoryScore').textContent = score.toLocaleString();
+            document.getElementById('victoryTime').textContent = formatDuration(gameDuration);
+            document.getElementById('victoryEnemies').textContent = totalEnemiesKilled.toLocaleString();
+            document.getElementById('victoryBosses').textContent = bossDefeated.length;
+
+            // Build boss gallery
+            const gallery = document.getElementById('bossGallery');
+            gallery.innerHTML = '';
+            const bossIcons = ['👻', '🐙', '🔥', '⚡', '👑', '💀'];
+            for (let i = 1; i <= 6; i++) {
+                const bossData = BOSSES[i];
+                const isDefeated = bossDefeated.includes(i);
+                const card = document.createElement('div');
+                card.className = 'boss-card' + (isDefeated ? ' defeated' : '');
+                card.innerHTML = `
+                    <div class="boss-icon">${bossIcons[i-1]}</div>
+                    <div class="boss-name" style="color: ${bossData.color}">${bossData.name}</div>
+                `;
+                gallery.appendChild(card);
+            }
+
+            // Show screen
+            document.getElementById('victoryScreen').classList.add('show');
+
+            // Start effects
+            playVictoryMusic();
+            startConfetti();
+
+            // Save victory to server
+            reportAction('victory', {
+                score,
+                gameDuration,
+                enemiesKilled: totalEnemiesKilled,
+                bossesDefeated: bossDefeated.length
+            });
+        }
+
+        async function saveVictoryEmail() {
+            const emailInput = document.getElementById('victoryEmail');
+            const email = emailInput.value.trim();
+            if (!email || !email.includes('@')) {
+                alert('Please enter a valid email address');
+                return;
+            }
+
+            try {
+                await fetch(`${API_BASE}/api/victory/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email,
+                        playerName: myPlayerName,
+                        score,
+                        gameDuration,
+                        enemiesKilled: totalEnemiesKilled,
+                        difficulty: selectedDifficulty
+                    })
+                });
+                document.getElementById('emailSavedMsg').style.display = 'block';
+                emailInput.disabled = true;
+            } catch (e) {
+                console.error('Failed to save victory email:', e);
+            }
+        }
+
+        function closeVictoryScreen() {
+            stopConfetti();
+            document.getElementById('victoryScreen').classList.remove('show');
+            document.getElementById('emailSavedMsg').style.display = 'none';
+            document.getElementById('victoryEmail').disabled = false;
+            document.getElementById('victoryEmail').value = '';
+            backToMenu();
+        }
+
         // === BOSS FUNCTIONS ===
         function spawnBoss(levelNum) {
             const bossData = BOSSES[levelNum];
@@ -2045,6 +2335,38 @@
                     boss.attackPattern = ['spread', 'spiral', 'wave', 'random'][pattern];
                     bossAttack();
                     boss.attackPattern = 'all';
+                    boss.phase++;
+                    break;
+                case 'ultimate':
+                    // SUPER BOSS: Combines multiple patterns simultaneously!
+                    const phase = boss.phase % 5;
+                    // Always fire spread
+                    for (let i = -3; i <= 3; i++) {
+                        bullets.push({
+                            x: boss.x + i * 25, y: boss.y + boss.height / 2,
+                            speed: bulletSpeed * 1.2, vx: i * 60, isEnemy: true, type: 'boss', width: 14, height: 14,
+                            color: '#FF0080'
+                        });
+                    }
+                    // Plus rotating spiral
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (boss.phase * 20 + i * 60) * Math.PI / 180;
+                        bullets.push({
+                            x: boss.x, y: boss.y + boss.height / 2,
+                            speed: bulletSpeed, vx: Math.cos(angle) * 200, isEnemy: true, type: 'boss', width: 12, height: 12,
+                            color: '#00FFFF'
+                        });
+                    }
+                    // Plus random chaos
+                    if (phase === 0 || phase === 2) {
+                        for (let i = 0; i < 4; i++) {
+                            bullets.push({
+                                x: boss.x + (Math.random() - 0.5) * boss.width, y: boss.y + boss.height / 2,
+                                speed: bulletSpeed * (1 + Math.random() * 0.5), vx: (Math.random() - 0.5) * 300,
+                                isEnemy: true, type: 'boss', width: 10, height: 10, color: '#FFFF00'
+                            });
+                        }
+                    }
                     boss.phase++;
                     break;
             }
@@ -2297,25 +2619,37 @@
 
                 // Report boss defeat action
                 const defeatedLevel = level;
-                reportAction('defeated_boss', { bossLevel: defeatedLevel });
+                const wasSuper = boss.isSuper;
+                reportAction('defeated_boss', { bossLevel: defeatedLevel, isSuper: wasSuper });
 
                 // Mark boss as defeated and advance level
                 bossDefeated.push(level);
-                level++;
-                if (level > 5) level = 5;
-                document.getElementById('levelDisplay').textContent = 'Level ' + level;
 
-                // Report level up action
-                reportAction('level_up', { newLevel: level });
-
-                // Cleanup
+                // Cleanup boss
                 boss = null;
                 bossActive = false;
                 document.getElementById('bossHealthContainer').classList.remove('show');
                 document.getElementById('bossTaunt').classList.remove('show');
-
-                // Stop boss music, play victory, resume normal music
                 stopBossMusic();
+
+                // Check if Super Boss was defeated - VICTORY!
+                if (wasSuper) {
+                    playBossDefeat();
+                    setTimeout(() => {
+                        showVictoryScreen();
+                    }, 2000);
+                    return;
+                }
+
+                // Advance level
+                level++;
+                if (level > 6) level = 6;
+                document.getElementById('levelDisplay').textContent = level <= 5 ? 'Level ' + level : 'FINAL LEVEL';
+
+                // Report level up action
+                reportAction('level_up', { newLevel: level });
+
+                // Play victory, resume normal music
                 playBossDefeat();
                 setTimeout(() => {
                     if (gameRunning && !bossActive) startBackgroundMusic(shieldActive);
@@ -2946,16 +3280,25 @@
         }
 
         function checkLevelUp() {
-            const newLevel = Math.min(5, Math.floor(score / levelUpScore) + 1);
-            if (newLevel > level && !bossActive) {
+            // Determine which boss should spawn based on score thresholds
+            // Boss 1: 1k, Boss 2: 3k, Boss 3: 5k, Boss 4: 7k, Boss 5: 9k, Boss 6: 11k
+            let targetLevel = 1;
+            for (let lvl = 6; lvl >= 1; lvl--) {
+                if (score >= bossThresholds[lvl]) {
+                    targetLevel = lvl;
+                    break;
+                }
+            }
+
+            if (targetLevel > level && !bossActive) {
                 // Check if boss for current level has been defeated
                 if (!bossDefeated.includes(level)) {
                     // Spawn boss for current level
                     spawnBoss(level);
-                } else {
+                } else if (level < 6) {
                     // Boss already defeated, advance level
-                    level = newLevel;
-                    document.getElementById('levelDisplay').textContent = 'Level ' + level;
+                    level++;
+                    document.getElementById('levelDisplay').textContent = level <= 5 ? 'Level ' + level : 'FINAL LEVEL';
                     playLevelUp();
                     createExplosion(logicalWidth / 2, logicalHeight / 2, '#ffd700', 40);
                 }
@@ -3001,6 +3344,7 @@
                 enemies = enemies.filter(enemy => {
                     if (enemy.x > player.x - 15 && enemy.x < player.x + 15 && enemy.y < player.y) {
                         score += 100;
+                        totalEnemiesKilled++;
                         document.getElementById('score').textContent = score;
                         createExplosion(enemy.x, enemy.y, '#ff00ff');
                         playExplosion();
@@ -3062,7 +3406,7 @@
                         if (shieldActive) {
                             shieldHits--; createExplosion(player.x, player.y, '#00ffff');
                             if (shieldHits <= 0) deactivateShield();
-                        } else {
+                        } else if (!isInvincible) {
                             lives--;
                             document.getElementById('lives').textContent = lives;
                             createExplosion(player.x, player.y, jetColors[selectedColor].body);
@@ -3082,7 +3426,7 @@
                                 playBigExplosion();
                                 enemies = enemies.filter(e => {
                                     const dist = Math.hypot(e.x - bullet.x, e.y - bullet.y);
-                                    if (dist < 100) { score += 100; createExplosion(e.x, e.y, '#e74c3c'); return false; }
+                                    if (dist < 100) { score += 100; totalEnemiesKilled++; createExplosion(e.x, e.y, '#e74c3c'); return false; }
                                     return true;
                                 });
                                 bullets.splice(bi, 1);
@@ -3090,6 +3434,7 @@
                                 bullets.splice(bi, 1);
                                 enemies.splice(ei, 1);
                                 score += 100;
+                                totalEnemiesKilled++;
                                 createExplosion(enemy.x, enemy.y, '#e74c3c');
                                 playExplosion();
                             }
@@ -3106,7 +3451,7 @@
                             playBigExplosion();
                             enemies = enemies.filter(e => {
                                 const dist = Math.hypot(e.x - bomb.x, e.y - bomb.y);
-                                if (dist < 120) { score += 100; createExplosion(e.x, e.y, '#ff6600'); return false; }
+                                if (dist < 120) { score += 100; totalEnemiesKilled++; createExplosion(e.x, e.y, '#ff6600'); return false; }
                                 return true;
                             });
                             document.getElementById('score').textContent = score;
@@ -3139,7 +3484,7 @@
                     if (shieldActive) {
                         shieldHits--; createExplosion(player.x, player.y, '#00ffff');
                         if (shieldHits <= 0) deactivateShield();
-                    } else {
+                    } else if (!isInvincible) {
                         lives--;
                         document.getElementById('lives').textContent = lives;
                         createExplosion(player.x, player.y, jetColors[selectedColor].body);
@@ -3158,7 +3503,7 @@
                     if (shieldActive) {
                         shieldHits--; createExplosion(player.x, player.y, '#00ffff');
                         if (shieldHits <= 0) deactivateShield();
-                    } else {
+                    } else if (!isInvincible) {
                         lives--;
                         document.getElementById('lives').textContent = lives;
                         createExplosion(player.x, player.y, jetColors[selectedColor].body);
@@ -3283,6 +3628,7 @@
 
             const diff = getDiffSettings();
             score = 0; lives = diff.lives; level = 1;
+            totalEnemiesKilled = 0;
             bullets = []; enemies = []; particles = []; powerups = [];
             bombs = []; walls = []; weaponPickups = [];
             player.x = logicalWidth / 2; player.y = logicalHeight - 80;
@@ -3325,6 +3671,26 @@
             // Leave old session first (in case of Play Again), then join as new player
             await leaveAsPlayer();
             await joinAsPlayer();
+
+            // Debug mode: 'ending123' shows victory screen immediately
+            if (myPlayerName && myPlayerName.toLowerCase() === 'ending123') {
+                // Simulate beating all bosses
+                bossDefeated = [1, 2, 3, 4, 5, 6];
+                score = 15000;
+                totalEnemiesKilled = 150;
+                gameDuration = 600; // 10 minutes
+                showVictoryScreen();
+                return;
+            }
+
+            // Debug mode: 'invincible' gives unlimited lives
+            if (myPlayerName && myPlayerName.toLowerCase() === 'invincible') {
+                isInvincible = true;
+                console.log('INVINCIBLE MODE ACTIVATED!');
+            } else {
+                isInvincible = false;
+            }
+
             await startGameSession();
             document.getElementById('onlinePlayersBar').classList.add('show');
             document.getElementById('chatBar').classList.add('show');

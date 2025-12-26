@@ -597,6 +597,41 @@ def get_player_history(name):
         return jsonify({'error': 'Server error'}), 500
 
 
+# === VICTORY API ===
+
+@app.route('/api/victory/save', methods=['POST'])
+def save_victory():
+    """Save victory data including player email."""
+    data = request.get_json() or {}
+
+    name = str(data.get('name', 'Anonymous'))[:12].strip()
+    email = str(data.get('email', ''))[:100].strip()
+    score = int(data.get('score', 0))
+    enemies_killed = int(data.get('enemiesKilled', 0))
+    duration = int(data.get('duration', 0))
+
+    if not name:
+        return jsonify({'error': 'Missing player name'}), 400
+
+    if USE_POSTGRES:
+        try:
+            session_id = database.save_victory(
+                name=name,
+                email=email,
+                score=score,
+                enemies_killed=enemies_killed,
+                duration=duration
+            )
+            return jsonify({'success': True, 'sessionId': session_id})
+        except Exception as e:
+            print(f"Database error saving victory: {e}")
+            return jsonify({'error': 'Server error'}), 500
+
+    # Fallback: Just log it
+    print(f"Victory: {name} ({email}) - Score: {score}, Enemies: {enemies_killed}")
+    return jsonify({'success': True})
+
+
 # === BACKUP SCHEDULER ===
 
 def init_backup_scheduler():

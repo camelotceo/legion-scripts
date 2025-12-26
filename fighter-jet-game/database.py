@@ -208,3 +208,66 @@ def get_game_events(session_id: int) -> list:
                 (session_id,)
             )
             return [dict(row) for row in cur.fetchall()]
+
+
+def save_victory(name: str, email: str, score: int, enemies_killed: int,
+                 duration: int) -> int:
+    """Save a victory record with email for a player who defeated the Super Boss."""
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get or create player
+            cur.execute("SELECT id FROM players WHERE name = %s", (name,))
+            player = cur.fetchone()
+
+            if not player:
+                cur.execute(
+                    "INSERT INTO players (name) VALUES (%s) RETURNING id",
+                    (name,)
+                )
+                player = cur.fetchone()
+
+            player_id = player['id']
+
+            # Update player email if provided
+            if email:
+                cur.execute(
+                    "UPDATE players SET email = %s WHERE id = %s",
+                    (email, player_id)
+                )
+
+            # Create a victory game session
+            cur.execute(
+                """INSERT INTO game_sessions
+                   (player_id, difficulty, started_at, ended_at, score, level,
+                    duration, death_reason, bosses_defeated)
+                   VALUES (%s, 'VICTORY', NOW() - INTERVAL '%s seconds', NOW(),
+                           %s, 6, %s, 'victory', 6)
+                   RETURNING id""",
+                (player_id, duration, score, duration)
+            )
+            session_id = cur.fetchone()['id']
+
+            # Log victory event with details
+            cur.execute(
+                """INSERT INTO game_events (session_id, event_type, emoji, details)
+                   VALUES (%s, 'victory', '🏆', %s)""",
+                (session_id, psycopg2.extras.Json({
+                    'enemies_killed': enemies_killed,
+                    'email': email,
+                    'bosses_defeated': 6
+                }))
+            )
+
+            # Update player stats
+            cur.execute(
+                """UPDATE players
+                   SET total_games = total_games + 1,
+                       total_score = total_score + %s,
+                       total_playtime = total_playtime + %s,
+                       best_score = GREATEST(best_score, %s),
+                       best_level = GREATEST(best_level, 6)
+                   WHERE id = %s""",
+                (score, duration, score, player_id)
+            )
+
+            return session_id
