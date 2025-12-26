@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY server.py .
 COPY fighter-jet-game.html .
+COPY redis_client.py .
+COPY database.py .
 
 # Create data directory for persistent storage
 RUN mkdir -p /app/data

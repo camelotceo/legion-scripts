@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  gameserver:
+    build: .
+    container_name: fighter-jet-game-local
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://gameserver:localdev123@postgres:5432/fighter_jet
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - ./data:/app/data
+    networks:
+      - game-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: fighter-jet-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - game-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: fighter-jet-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fighter_jet
+      POSTGRES_USER: gameserver
+      POSTGRES_PASSWORD: localdev123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    networks:
+      - game-network
+
+networks:
+  game-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  postgres_data:

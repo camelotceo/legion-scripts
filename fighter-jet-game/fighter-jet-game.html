@@ -34,16 +34,24 @@
         #muteButton.muted { background: rgba(255, 100, 100, 0.3); border-color: rgba(255, 100, 100, 0.7); }
         #quitButton { background: rgba(255, 100, 100, 0.3); border-color: rgba(255, 100, 100, 0.7); margin-top: 5px; }
         #quitButton:hover { background: rgba(255, 100, 100, 0.5); }
-        #startScreen, #gameOverScreen {
+        #startScreen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             background: rgba(0, 0, 0, 0.9); color: #fff; border-radius: 8px;
+        }
+        #gameOverScreen {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(0, 0, 0, 0.95); color: #fff; border-radius: 15px;
+            border: 2px solid #f66; padding: 25px 40px; max-width: 350px; z-index: 200;
+            box-shadow: 0 0 30px rgba(255, 100, 100, 0.4);
         }
         #startScreen h1, #gameOverScreen h1 {
             font-size: 38px; margin-bottom: 15px; color: #6af;
             text-shadow: 0 0 20px rgba(100, 170, 255, 0.8);
         }
-        #gameOverScreen h2 { font-size: 28px; margin-bottom: 10px; color: #f66; }
+        #gameOverScreen h1 { font-size: 28px; color: #fff; }
+        #gameOverScreen h2 { font-size: 22px; margin-bottom: 10px; color: #f66; }
         .btn {
             padding: 12px 35px; font-size: 18px;
             background: linear-gradient(135deg, #4a6cf7, #6a4cf7);
@@ -170,24 +178,87 @@
         #touchControls.show { display: block; }
         /* Live Players Sidebar */
         #livePlayersSidebar {
-            position: absolute; top: 60px; right: 10px; width: 160px;
-            background: rgba(0, 0, 0, 0.7); border: 2px solid rgba(100, 170, 255, 0.5);
+            position: absolute; top: 60px; right: 10px; width: 180px;
+            background: rgba(0, 0, 0, 0.8); border: 2px solid rgba(100, 170, 255, 0.5);
             border-radius: 10px; padding: 10px; display: none; z-index: 50;
+            max-height: 400px; overflow-y: auto;
         }
         #livePlayersSidebar.show { display: block; }
         #livePlayersSidebar h4 { color: #6af; font-size: 12px; margin-bottom: 8px; text-align: center; }
         .live-player {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 4px 6px; margin: 3px 0; border-radius: 4px; font-size: 11px;
-            background: rgba(255, 255, 255, 0.05);
+            display: flex; flex-direction: column; padding: 6px 8px; margin: 4px 0;
+            border-radius: 6px; font-size: 11px; background: rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
         }
         .live-player.you { background: rgba(100, 170, 255, 0.2); border: 1px solid #6af; }
-        .live-player .player-name { color: #fff; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .live-player.boss-defeated { background: rgba(255, 215, 0, 0.15); border: 1px solid #ffd700; }
+        .live-player.action-flash { animation: actionFlash 0.4s ease-in-out 1; }
+        .live-player.dying { animation: deathAnimation 3s ease-out forwards; }
+        .live-player .player-row { display: flex; align-items: center; justify-content: space-between; }
+        .live-player .player-info { display: flex; align-items: center; flex: 1; min-width: 0; }
+        .live-player .player-name { color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .live-player .player-score { color: #4ade80; font-weight: bold; margin-left: 5px; }
-        .live-player .player-status { width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+        .live-player .player-status { width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; flex-shrink: 0; }
         .live-player .player-status.lobby { background: #facc15; }
         .live-player .player-status.playing { background: #4ade80; }
-        .live-player .player-status.boss { background: #ef4444; }
+        .live-player .player-status.boss { background: #ef4444; animation: pulse 1s infinite; }
+        .live-player .player-status.dead { background: #666; }
+        .live-player .player-action { display: flex; align-items: center; margin-top: 3px; font-size: 10px; color: #aaa; }
+        .live-player .action-emoji { margin-right: 4px; font-size: 12px; }
+        .live-player .action-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .live-player .player-meta { display: flex; justify-content: space-between; margin-top: 3px; font-size: 9px; color: #888; }
+        .live-player .player-timer { color: #6af; }
+        .live-player .player-level { color: #facc15; }
+        .live-player .watch-btn {
+            background: rgba(100, 170, 255, 0.3); border: 1px solid #6af; color: #6af;
+            padding: 2px 6px; border-radius: 3px; font-size: 9px; cursor: pointer; margin-top: 4px;
+        }
+        .live-player .watch-btn:hover { background: rgba(100, 170, 255, 0.5); }
+        .live-player .spectator-count { font-size: 9px; color: #888; margin-left: auto; }
+        @keyframes actionFlash { 0%, 100% { background: rgba(255, 255, 255, 0.05); } 50% { background: rgba(100, 255, 100, 0.4); } }
+        @keyframes deathAnimation {
+            0% { background: rgba(255, 50, 50, 0.6); opacity: 1; }
+            10% { background: rgba(255, 255, 255, 0.1); }
+            20% { background: rgba(255, 50, 50, 0.6); }
+            30% { background: rgba(255, 255, 255, 0.1); }
+            40% { background: rgba(255, 50, 50, 0.6); }
+            50% { background: rgba(255, 255, 255, 0.1); opacity: 1; }
+            100% { background: rgba(100, 100, 100, 0.2); opacity: 0; }
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        /* Spectator Mode Styles - Multiple resizable PiP windows */
+        .spectator-window {
+            display: flex; flex-direction: column; position: fixed; z-index: 500;
+            background: rgba(0, 0, 0, 0.95); border: 2px solid #4a6cf7; border-radius: 10px;
+            font-family: Arial, sans-serif; min-width: 200px; min-height: 180px;
+            resize: both; overflow: hidden;
+        }
+        .spectator-window .spec-header {
+            display: flex; align-items: center; justify-content: space-between; padding: 6px 10px;
+            background: rgba(74, 108, 247, 0.3); border-bottom: 1px solid #4a6cf7;
+            cursor: move; flex-shrink: 0; user-select: none;
+        }
+        .spectator-window .spec-title { color: #6af; font-weight: bold; font-size: 12px; }
+        .spectator-window .spec-info { color: #aaa; font-size: 10px; margin-left: 8px; }
+        .spectator-window .spec-close {
+            padding: 2px 8px; font-size: 14px; background: rgba(255, 100, 100, 0.3);
+            border: 1px solid #f66; border-radius: 4px; color: #f66; cursor: pointer; line-height: 1;
+        }
+        .spectator-window .spec-close:hover { background: rgba(255, 100, 100, 0.5); }
+        .spectator-window .spec-canvas-container {
+            flex: 1; display: flex; justify-content: center; align-items: center;
+            background: #000; overflow: hidden;
+        }
+        .spectator-window .spec-canvas { width: 100%; height: 100%; background: #000; }
+        .spectator-window .spec-stats {
+            display: flex; justify-content: space-around; padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.5); border-top: 1px solid #333; font-size: 10px; flex-shrink: 0;
+        }
+        .spectator-window .spec-stat { color: #aaa; }
+        .spectator-window .spec-stat span { color: #fff; font-weight: bold; }
+        /* Container for all spectator windows */
+        #spectatorContainer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 499; }
+        #spectatorContainer .spectator-window { pointer-events: auto; }
         /* Modal Styles */
         .modal-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -248,11 +319,14 @@
             #gameCanvas { max-width: 100vw; max-height: 65vh; }
             #startScreen h1, #gameOverScreen h1 { font-size: 26px; }
             .diff-btn { padding: 8px 14px; font-size: 12px; }
-            #livePlayersSidebar { width: 120px; top: 50px; right: 5px; padding: 6px; }
+            #livePlayersSidebar { width: 140px; top: 50px; right: 5px; padding: 6px; max-height: 300px; }
             #livePlayersSidebar h4 { font-size: 10px; }
-            #lobbySidebar { width: 120px; top: 50px; left: 5px; padding: 6px; }
+            #lobbySidebar { width: 140px; top: 50px; left: 5px; padding: 6px; }
             #lobbySidebar h4 { font-size: 10px; }
-            .live-player { font-size: 9px; padding: 3px 4px; }
+            .live-player { font-size: 9px; padding: 4px 5px; }
+            .live-player .player-action { font-size: 8px; }
+            .live-player .player-meta { font-size: 8px; }
+            .live-player .watch-btn { font-size: 8px; padding: 2px 4px; }
             .leaderboard { max-height: 120px; }
             .leaderboard-list li { font-size: 11px; padding: 4px 10px; }
             #bossHealthContainer { width: 200px; }
@@ -377,6 +451,9 @@
         <div id="fireButton">FIRE</div>
     </div>
 
+    <!-- Container for multiple spectator windows -->
+    <div id="spectatorContainer"></div>
+
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -425,13 +502,13 @@
             return newScore > cachedLeaderboard[cachedLeaderboard.length - 1].score;
         }
 
-        async function addHighScore(name, newScore, difficulty, lvl) {
+        async function addHighScore(name, newScore, difficulty, lvl, duration = 0) {
             try {
                 const url = `${API_BASE}/api/leaderboard`;
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, score: newScore, difficulty, level: lvl })
+                    body: JSON.stringify({ name, score: newScore, difficulty, level: lvl, duration: duration })
                 });
                 if (response.ok) {
                     const text = await response.text();
@@ -475,19 +552,45 @@
         // === LIVE PLAYERS SYSTEM ===
         let myPlayerId = null;
         let myPlayerName = '';
+        let mySessionId = null;
         let livePlayers = [];
         let playerPollInterval = null;
+        let gameStartTime = null;
+        let gameDuration = 0;
+        const playerActionTimes = new Map(); // Track action times for flash animation
+        const playerDeathTimes = new Map(); // Track death times for delayed removal
+        let mySpectatorCount = 0; // Track how many people are watching me
+
+        // Load saved player name from localStorage
+        function loadSavedPlayerName() {
+            const saved = localStorage.getItem('playerName');
+            if (saved) {
+                myPlayerName = saved;
+                const nameInput = document.getElementById('playerNameInput');
+                if (nameInput) nameInput.value = saved;
+            }
+        }
+
+        // Save player name to localStorage
+        function savePlayerName(name) {
+            if (name) {
+                localStorage.setItem('playerName', name);
+                myPlayerName = name;
+            }
+        }
 
         async function joinAsPlayer() {
             const nameInput = document.getElementById('playerNameInput');
+            // Use entered name, or fall back to saved name
             const enteredName = nameInput ? nameInput.value.trim() : '';
+            const nameToUse = enteredName || localStorage.getItem('playerName') || '';
 
             try {
                 const response = await fetch(`${API_BASE}/api/players/join`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        name: enteredName,
+                        name: nameToUse,
                         difficulty: selectedDifficulty.toUpperCase(),
                         color: selectedColor
                     })
@@ -496,6 +599,8 @@
                     const data = await response.json();
                     myPlayerId = data.playerId;
                     myPlayerName = data.name;
+                    // Save the name (especially important for random names)
+                    savePlayerName(data.name);
                     livePlayers = data.players || [];
                     console.log('Joined as:', myPlayerName, 'ID:', myPlayerId);
                     return true;
@@ -506,6 +611,10 @@
 
         async function updatePlayerStatus(status) {
             if (!myPlayerId) return;
+            // Update game duration
+            if (gameStartTime) {
+                gameDuration = Math.floor((Date.now() - gameStartTime) / 1000);
+            }
             try {
                 const response = await fetch(`${API_BASE}/api/players/update`, {
                     method: 'POST',
@@ -515,7 +624,11 @@
                         score: score,
                         level: level,
                         status: status,
-                        difficulty: selectedDifficulty.toUpperCase()
+                        difficulty: selectedDifficulty.toUpperCase(),
+                        gameDuration: gameDuration,
+                        shieldActive: shieldActive,
+                        currentWeapon: currentWeapon,
+                        bossHealth: boss ? Math.floor((boss.health / boss.maxHealth) * 100) : null
                     })
                 });
                 if (response.ok) {
@@ -524,6 +637,58 @@
                     renderLivePlayers();
                 }
             } catch (e) { console.error('Failed to update player status:', e); }
+        }
+
+        async function reportAction(action, details = null) {
+            if (!myPlayerId) return;
+            try {
+                await fetch(`${API_BASE}/api/players/action`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        playerId: myPlayerId,
+                        sessionId: mySessionId,
+                        action: action,
+                        details: details
+                    })
+                });
+            } catch (e) { console.error('Failed to report action:', e); }
+        }
+
+        async function startGameSession() {
+            try {
+                const response = await fetch(`${API_BASE}/api/players/start-session`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: myPlayerName,
+                        difficulty: selectedDifficulty.toUpperCase()
+                    })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    mySessionId = data.sessionId;
+                }
+            } catch (e) { console.error('Failed to start session:', e); }
+        }
+
+        async function endGameSession(deathReason) {
+            if (!mySessionId) return;
+            try {
+                await fetch(`${API_BASE}/api/players/end-session`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionId: mySessionId,
+                        score: score,
+                        level: level,
+                        duration: gameDuration,
+                        deathReason: deathReason,
+                        bossesDefeated: bossDefeated.length
+                    })
+                });
+            } catch (e) { console.error('Failed to end session:', e); }
+            mySessionId = null;
         }
 
         async function leaveAsPlayer() {
@@ -538,15 +703,81 @@
             myPlayerId = null;
         }
 
+        // Game state broadcasting for spectators
+        let lastBroadcastTime = 0;
+        const BROADCAST_INTERVAL = 150; // ms between broadcasts
+
+        async function broadcastGameState() {
+            if (!myPlayerId || mySpectatorCount === 0) return;
+            if (!gameRunning || lives <= 0) return;
+
+            const now = Date.now();
+            if (now - lastBroadcastTime < BROADCAST_INTERVAL) return;
+            lastBroadcastTime = now;
+
+            const state = {
+                player: { x: player.x, y: player.y, width: player.width, height: player.height },
+                enemies: enemies.map(e => ({ x: e.x, y: e.y, width: e.width, height: e.height, weapon: e.weapon, color: e.color })),
+                bullets: bullets.map(b => ({ x: b.x, y: b.y, isEnemy: b.isEnemy, type: b.type, color: b.color })),
+                boss: boss ? { x: boss.x, y: boss.y, width: boss.width, height: boss.height, health: boss.health, maxHealth: boss.maxHealth, phase: boss.phase } : null,
+                powerups: powerups.map(p => ({ x: p.x, y: p.y })),
+                bombs: bombs.map(b => ({ x: b.x, y: b.y })),
+                walls: walls.map(w => ({ x: w.x, y: w.y, width: w.width, height: w.height, gapY: w.gapY, gapHeight: w.gapHeight })),
+                score: score,
+                level: level,
+                lives: lives,
+                shieldActive: shieldActive,
+                currentWeapon: currentWeapon,
+                bossActive: bossActive,
+                gameDuration: gameDuration
+            };
+
+            try {
+                await fetch(`${API_BASE}/api/players/gamestate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ playerId: myPlayerId, state })
+                });
+            } catch (e) { /* Silently ignore broadcast errors */ }
+        }
+
         async function fetchActivePlayers() {
             try {
                 const response = await fetch(`${API_BASE}/api/players/active`);
                 if (response.ok) {
                     livePlayers = await response.json();
+
+                    // Filter out dead players after death animation completes (3 seconds)
+                    const DEAD_DISPLAY_DURATION = 3000;
+                    livePlayers = livePlayers.filter(p => {
+                        if (p.status !== 'dead') return true;
+                        const deathTime = playerDeathTimes.get(p.id);
+                        if (!deathTime) return true; // First time seeing this dead player
+                        return Date.now() - deathTime < DEAD_DISPLAY_DURATION;
+                    });
+
+                    // Clean up old death times
+                    for (const [id, time] of playerDeathTimes) {
+                        if (Date.now() - time > DEAD_DISPLAY_DURATION * 2) {
+                            playerDeathTimes.delete(id);
+                        }
+                    }
+
+                    // Update my spectator count for broadcasting
+                    const myPlayer = livePlayers.find(p => p.id === myPlayerId);
+                    mySpectatorCount = myPlayer ? (parseInt(myPlayer.spectatorCount) || 0) : 0;
+
                     renderLivePlayers();
                     renderLobbyPlayers();
                 }
             } catch (e) { console.error('Failed to fetch active players:', e); }
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds || seconds < 0) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
         }
 
         function renderLivePlayers() {
@@ -558,10 +789,47 @@
             }
             sidebar.innerHTML = livePlayers.map(p => {
                 const isYou = p.id === myPlayerId;
-                return `<div class="live-player ${isYou ? 'you' : ''}">
-                    <span class="player-status ${p.status}"></span>
-                    <span class="player-name">${p.name}${isYou ? ' (you)' : ''}</span>
-                    <span class="player-score">${p.score.toLocaleString()}</span>
+                const classes = ['live-player'];
+                if (isYou) classes.push('you');
+                if (p.defeatedBoss) classes.push('boss-defeated');
+
+                // Action-based flash: only flash when lastActionTime changes
+                const prevActionTime = playerActionTimes.get(p.id);
+                const hasNewAction = prevActionTime && p.lastActionTime && p.lastActionTime !== prevActionTime;
+                playerActionTimes.set(p.id, p.lastActionTime);
+                if (hasNewAction) classes.push('action-flash');
+
+                // Dead player handling: flash red then track for removal
+                if (p.status === 'dead') {
+                    if (!playerDeathTimes.has(p.id)) {
+                        playerDeathTimes.set(p.id, Date.now());
+                    }
+                    classes.push('dying');
+                } else {
+                    playerDeathTimes.delete(p.id);
+                }
+
+                const actionText = p.lastAction ? p.lastAction.replace(/_/g, ' ') : '';
+                const duration = parseInt(p.gameDuration) || 0;
+                const spectatorCount = parseInt(p.spectatorCount) || 0;
+
+                return `<div class="${classes.join(' ')}">
+                    <div class="player-row">
+                        <div class="player-info">
+                            <span class="player-status ${p.status || 'lobby'}"></span>
+                            <span class="player-name">${p.name}${isYou ? ' (you)' : ''}</span>
+                        </div>
+                        <span class="player-score">${(parseInt(p.score) || 0).toLocaleString()}</span>
+                    </div>
+                    ${p.lastActionEmoji ? `<div class="player-action">
+                        <span class="action-emoji">${p.lastActionEmoji}</span>
+                        <span class="action-text">${actionText}</span>
+                    </div>` : ''}
+                    <div class="player-meta">
+                        <span class="player-level">Lv.${p.level || 1}</span>
+                        <span class="player-timer">⏱️ ${formatDuration(duration)}</span>
+                    </div>
+                    ${!isYou && p.status === 'playing' ? `<button class="watch-btn" onclick="spectatePlayer('${p.id}')">👁️ Watch${spectatorCount > 0 ? ` (${spectatorCount})` : ''}</button>` : ''}
                 </div>`;
             }).join('');
         }
@@ -579,10 +847,41 @@
             }
             lobby.innerHTML = livePlayers.map(p => {
                 const isYou = p.id === myPlayerId;
-                return `<div class="live-player ${isYou ? 'you' : ''}">
-                    <span class="player-status ${p.status}"></span>
-                    <span class="player-name">${p.name}${isYou ? ' (you)' : ''}</span>
-                    <span class="player-score">${p.score.toLocaleString()}</span>
+                const classes = ['live-player'];
+                if (isYou) classes.push('you');
+                if (p.defeatedBoss) classes.push('boss-defeated');
+
+                // Action-based flash: only flash when lastActionTime changes
+                const prevActionTime = playerActionTimes.get(p.id);
+                const hasNewAction = prevActionTime && p.lastActionTime && p.lastActionTime !== prevActionTime;
+                playerActionTimes.set(p.id, p.lastActionTime);
+                if (hasNewAction) classes.push('action-flash');
+
+                // Dead player handling
+                if (p.status === 'dead') {
+                    if (!playerDeathTimes.has(p.id)) {
+                        playerDeathTimes.set(p.id, Date.now());
+                    }
+                    classes.push('dying');
+                } else {
+                    playerDeathTimes.delete(p.id);
+                }
+
+                const spectatorCount = parseInt(p.spectatorCount) || 0;
+
+                return `<div class="${classes.join(' ')}">
+                    <div class="player-row">
+                        <div class="player-info">
+                            <span class="player-status ${p.status || 'lobby'}"></span>
+                            <span class="player-name">${p.name}${isYou ? ' (you)' : ''}</span>
+                        </div>
+                        <span class="player-score">${(parseInt(p.score) || 0).toLocaleString()}</span>
+                    </div>
+                    ${p.lastActionEmoji ? `<div class="player-action">
+                        <span class="action-emoji">${p.lastActionEmoji}</span>
+                        <span class="action-text">${p.lastAction ? p.lastAction.replace(/_/g, ' ') : ''}</span>
+                    </div>` : ''}
+                    ${!isYou && p.status === 'playing' ? `<button class="watch-btn" onclick="spectatePlayer('${p.id}')">👁️ Watch${spectatorCount > 0 ? ` (${spectatorCount})` : ''}</button>` : ''}
                 </div>`;
             }).join('');
         }
@@ -603,9 +902,274 @@
             }
         }
 
+        // === SPECTATOR MODE - Multiple Windows ===
+        const spectatorWindows = new Map(); // playerId -> window data
+        let spectatorWindowCount = 0;
+
+        function spectatePlayer(playerId) {
+            // Check if already watching this player
+            if (spectatorWindows.has(playerId)) {
+                return; // Already watching
+            }
+
+            const player = livePlayers.find(p => p.id === playerId);
+            if (!player) return;
+
+            // Create new spectator window
+            const windowId = 'spec-' + (++spectatorWindowCount);
+            const windowData = createSpectatorWindow(windowId, playerId, player);
+            spectatorWindows.set(playerId, windowData);
+
+            // Start polling for this window
+            startSpectatorPolling(playerId, windowData);
+        }
+
+        function createSpectatorWindow(windowId, playerId, player) {
+            const container = document.getElementById('spectatorContainer');
+            const offset = spectatorWindows.size * 30; // Offset each new window
+
+            const windowEl = document.createElement('div');
+            windowEl.className = 'spectator-window';
+            windowEl.id = windowId;
+            windowEl.style.cssText = `bottom: ${20 + offset}px; right: ${20 + offset}px; width: 320px; height: 280px;`;
+
+            windowEl.innerHTML = `
+                <div class="spec-header">
+                    <div>
+                        <span class="spec-title">${player.name}</span>
+                        <span class="spec-info">${player.difficulty || 'EASY'} | Lv.${player.level || 1}</span>
+                    </div>
+                    <button class="spec-close" onclick="closeSpectatorWindow('${playerId}')">✕</button>
+                </div>
+                <div class="spec-canvas-container">
+                    <canvas class="spec-canvas" width="320" height="200"></canvas>
+                </div>
+                <div class="spec-stats">
+                    <div class="spec-stat">Score: <span class="spec-score">0</span></div>
+                    <div class="spec-stat">Lv: <span class="spec-level">1</span></div>
+                    <div class="spec-stat">❤️ <span class="spec-lives">3</span></div>
+                </div>
+            `;
+
+            container.appendChild(windowEl);
+
+            // Make window draggable
+            makeDraggable(windowEl);
+
+            // Get canvas context
+            const canvas = windowEl.querySelector('.spec-canvas');
+            const ctx = canvas.getContext('2d');
+
+            return {
+                windowId,
+                playerId,
+                element: windowEl,
+                canvas,
+                ctx,
+                pollInterval: null
+            };
+        }
+
+        function makeDraggable(el) {
+            const header = el.querySelector('.spec-header');
+            let isDragging = false;
+            let startX, startY, startRight, startBottom;
+
+            header.addEventListener('mousedown', (e) => {
+                if (e.target.classList.contains('spec-close')) return;
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startRight = parseInt(el.style.right) || 20;
+                startBottom = parseInt(el.style.bottom) || 20;
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const dx = startX - e.clientX;
+                const dy = startY - e.clientY;
+                el.style.right = Math.max(0, startRight + dx) + 'px';
+                el.style.bottom = Math.max(0, startBottom + dy) + 'px';
+            });
+
+            document.addEventListener('mouseup', () => { isDragging = false; });
+        }
+
+        function startSpectatorPolling(playerId, windowData) {
+            const spectatorId = myPlayerId || 'spec_' + Math.random().toString(36).substr(2, 8);
+
+            windowData.pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/players/spectate/${playerId}?spectatorId=${spectatorId}`);
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            renderSpectatorWindowMessage(windowData, 'Not playing');
+                        }
+                        return;
+                    }
+                    const data = await response.json();
+                    if (data.state) {
+                        renderSpectatorWindowGame(windowData, data.state);
+                        updateSpectatorWindowStats(windowData, data.state);
+                    }
+                    if (data.player) {
+                        const info = windowData.element.querySelector('.spec-info');
+                        if (info) info.textContent = `${data.player.difficulty || 'EASY'} | Lv.${data.player.level || 1}`;
+                    }
+                } catch (e) { /* ignore */ }
+            }, 150);
+
+            // Initial poll
+            fetch(`${API_BASE}/api/players/spectate/${playerId}?spectatorId=${spectatorId}`).catch(() => {});
+        }
+
+        function closeSpectatorWindow(playerId) {
+            const windowData = spectatorWindows.get(playerId);
+            if (!windowData) return;
+
+            // Stop polling
+            if (windowData.pollInterval) clearInterval(windowData.pollInterval);
+
+            // Tell server we stopped watching
+            const spectatorId = myPlayerId || 'spec_' + Math.random().toString(36).substr(2, 8);
+            fetch(`${API_BASE}/api/players/spectate/${playerId}/leave`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spectatorId })
+            }).catch(() => {});
+
+            // Remove element
+            windowData.element.remove();
+            spectatorWindows.delete(playerId);
+        }
+
+        function renderSpectatorWindowGame(windowData, state) {
+            const { canvas, ctx } = windowData;
+            const cw = canvas.width;
+            const ch = canvas.height;
+            const scaleX = cw / logicalWidth;
+            const scaleY = ch / logicalHeight;
+
+            // Clear
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, cw, ch);
+
+            // Stars
+            ctx.fillStyle = '#fff';
+            for (let i = 0; i < 20; i++) {
+                const x = (i * 47 + Date.now() * 0.01) % cw;
+                const y = (i * 31) % ch;
+                ctx.fillRect(x, y, 1, 1);
+            }
+
+            // Walls
+            if (state.walls) {
+                state.walls.forEach(w => {
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(w.x * scaleX, w.y * scaleY, w.width * scaleX, w.gapY * scaleY);
+                    ctx.fillRect(w.x * scaleX, (w.gapY + w.gapHeight) * scaleY, w.width * scaleX, (logicalHeight - w.gapY - w.gapHeight) * scaleY);
+                });
+            }
+
+            // Bombs
+            if (state.bombs) {
+                ctx.fillStyle = '#ff4444';
+                state.bombs.forEach(b => {
+                    ctx.beginPath();
+                    ctx.arc(b.x * scaleX, b.y * scaleY, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            // Bullets
+            if (state.bullets) {
+                state.bullets.forEach(b => {
+                    ctx.fillStyle = b.isEnemy ? '#ff6666' : '#6af';
+                    ctx.fillRect(b.x * scaleX - 1, b.y * scaleY - 3, 3, 6);
+                });
+            }
+
+            // Enemies
+            if (state.enemies) {
+                state.enemies.forEach(e => {
+                    ctx.fillStyle = e.color || '#f55';
+                    const w = (e.width || 40) * scaleX;
+                    const h = (e.height || 40) * scaleY;
+                    ctx.fillRect(e.x * scaleX - w/2, e.y * scaleY - h/2, w, h);
+                });
+            }
+
+            // Boss
+            if (state.boss && state.bossActive) {
+                ctx.fillStyle = '#ff00ff';
+                const bw = (state.boss.width || 100) * scaleX;
+                const bh = (state.boss.height || 80) * scaleY;
+                ctx.fillRect(state.boss.x * scaleX - bw/2, state.boss.y * scaleY - bh/2, bw, bh);
+                if (state.boss.health && state.boss.maxHealth) {
+                    const hpRatio = state.boss.health / state.boss.maxHealth;
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(5, 5, cw - 10, 4);
+                    ctx.fillStyle = hpRatio > 0.3 ? '#ff00ff' : '#ff0000';
+                    ctx.fillRect(5, 5, (cw - 10) * hpRatio, 4);
+                }
+            }
+
+            // Player
+            if (state.player) {
+                const px = state.player.x * scaleX;
+                const py = state.player.y * scaleY;
+                const pw = (state.player.width || 50) * scaleX;
+                const ph = (state.player.height || 50) * scaleY;
+
+                if (state.shieldActive) {
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(px, py, pw * 0.6, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = '#6af';
+                ctx.beginPath();
+                ctx.moveTo(px, py - ph/2);
+                ctx.lineTo(px - pw/2, py + ph/2);
+                ctx.lineTo(px + pw/2, py + ph/2);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        function renderSpectatorWindowMessage(windowData, msg) {
+            const { canvas, ctx } = windowData;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#666';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(msg, canvas.width / 2, canvas.height / 2);
+        }
+
+        function updateSpectatorWindowStats(windowData, state) {
+            const el = windowData.element;
+            el.querySelector('.spec-score').textContent = (state.score || 0).toLocaleString();
+            el.querySelector('.spec-level').textContent = state.level || 1;
+            el.querySelector('.spec-lives').textContent = state.lives || 0;
+        }
+
+        // Close all spectator windows
+        function closeAllSpectatorWindows() {
+            for (const playerId of spectatorWindows.keys()) {
+                closeSpectatorWindow(playerId);
+            }
+        }
+
+
         // Initialize leaderboard on page load
         document.addEventListener('DOMContentLoaded', () => {
             renderLeaderboard('startLeaderboardList');
+            // Load saved player name from localStorage
+            loadSavedPlayerName();
             // Start polling for lobby players
             fetchActivePlayers();
             setInterval(fetchActivePlayers, 3000);
@@ -1041,6 +1605,9 @@
 
             // Initial taunt
             setTimeout(() => showBossTaunt(), 1000);
+
+            // Report action
+            reportAction('fighting_boss', { bossName: bossData.name, level: levelNum });
         }
 
         function updateBossHealthBar() {
@@ -1305,6 +1872,8 @@
             }
         }
 
+        let bossLowHealthReported = false;
+
         function damageBoss(damage) {
             if (!boss) return;
             boss.health -= damage;
@@ -1312,7 +1881,15 @@
             updateBossHealthBar();
             createExplosion(boss.x + (Math.random() - 0.5) * boss.width, boss.y + (Math.random() - 0.5) * boss.height, '#ffff00', 10);
 
+            // Report boss low health once
+            const healthPercent = (boss.health / boss.maxHealth) * 100;
+            if (healthPercent <= 25 && !bossLowHealthReported) {
+                bossLowHealthReported = true;
+                reportAction('boss_low_health', { healthPercent: Math.floor(healthPercent) });
+            }
+
             if (boss.health <= 0) {
+                bossLowHealthReported = false;
                 defeatBoss();
             }
         }
@@ -1351,11 +1928,18 @@
                 score += boss.maxHealth * 50;
                 document.getElementById('score').textContent = score;
 
+                // Report boss defeat action
+                const defeatedLevel = level;
+                reportAction('defeated_boss', { bossLevel: defeatedLevel });
+
                 // Mark boss as defeated and advance level
                 bossDefeated.push(level);
                 level++;
                 if (level > 5) level = 5;
                 document.getElementById('levelDisplay').textContent = 'Level ' + level;
+
+                // Report level up action
+                reportAction('level_up', { newLevel: level });
 
                 // Cleanup
                 boss = null;
@@ -2116,7 +2700,11 @@
                             document.getElementById('lives').textContent = lives;
                             createExplosion(player.x, player.y, jetColors[selectedColor].body);
                             playExplosion();
-                            if (lives <= 0) gameOver();
+                            if (lives <= 0) {
+                                const deathReason = bullet.type === 'boss' ? 'killed_by_boss' : 'killed_by_drone';
+                                reportAction(deathReason);
+                                gameOver(deathReason);
+                            }
                         }
                     }
                 } else {
@@ -2189,7 +2777,10 @@
                         document.getElementById('lives').textContent = lives;
                         createExplosion(player.x, player.y, jetColors[selectedColor].body);
                         playExplosion();
-                        if (lives <= 0) gameOver();
+                        if (lives <= 0) {
+                            reportAction('killed_by_drone');
+                            gameOver('killed_by_drone');
+                        }
                     }
                 }
             });
@@ -2205,7 +2796,10 @@
                         document.getElementById('lives').textContent = lives;
                         createExplosion(player.x, player.y, jetColors[selectedColor].body);
                         playExplosion();
-                        if (lives <= 0) gameOver();
+                        if (lives <= 0) {
+                            reportAction('crashed_wall');
+                            gameOver('crashed_wall');
+                        }
                     }
                     player.y = wall.y + wall.height + 30;
                 }
@@ -2218,6 +2812,7 @@
                     createExplosion(p.x, p.y, '#00ff00');
                     playPowerupCollect();
                     activateShield();
+                    reportAction('got_shield');
                 }
             });
 
@@ -2230,6 +2825,7 @@
                     }
                     currentWeapon = w.type;
                     updateWeaponDisplay();
+                    reportAction('got_' + w.type);
                     createExplosion(w.x, w.y, WEAPONS[w.type].color);
                     playPowerupCollect();
                 }
@@ -2271,6 +2867,9 @@
 
             update(dt);
             draw();
+
+            // Broadcast game state to spectators (throttled)
+            broadcastGameState();
 
             if (gameRunning && !bossActive) {
                 // Only spawn enemies/items when not fighting a boss
@@ -2331,10 +2930,14 @@
             bossActive = false;
             bossDefeated = [];
             bossTauntTimer = 0;
+            bossLowHealthReported = false;
             stopBossMusic();
             document.getElementById('bossHealthContainer').classList.remove('show');
             document.getElementById('bossTaunt').classList.remove('show');
             initBackground();
+            // Initialize game timer
+            gameStartTime = Date.now();
+            gameDuration = 0;
 
             document.getElementById('score').textContent = score;
             document.getElementById('lives').textContent = lives;
@@ -2354,22 +2957,36 @@
             }
             // Join as live player and show sidebar
             await joinAsPlayer();
+            await startGameSession();
             document.getElementById('livePlayersSidebar').classList.add('show');
             startPlayerPolling();
             updatePlayerStatus('playing');
+            reportAction('started_game');
         }
 
-        async function gameOver() {
+        let lastDeathReason = 'unknown';
+
+        async function gameOver(deathReason = 'unknown') {
             gameRunning = false;
             gamePaused = false;
             laserActive = false;
+            lastDeathReason = deathReason;
+            // Update final game duration
+            if (gameStartTime) {
+                gameDuration = Math.floor((Date.now() - gameStartTime) / 1000);
+            }
             // Clean up boss state
+            const wasBossActive = bossActive;
             boss = null;
             bossActive = false;
             stopBossMusic();
             document.getElementById('bossHealthContainer').classList.remove('show');
             document.getElementById('bossTaunt').classList.remove('show');
             document.getElementById('touchControls').classList.remove('show');
+            // Report death action
+            reportAction('game_over', { deathReason, score, level, duration: gameDuration });
+            // End session
+            await endGameSession(deathReason);
             // Clean up live players
             stopPlayerPolling();
             document.getElementById('livePlayersSidebar').classList.remove('show');
@@ -2384,7 +3001,7 @@
             await fetchLeaderboard();
             if (isHighScore(score) && score > 0) {
                 const playerName = myPlayerName || 'Anonymous';
-                await addHighScore(playerName, score, selectedDifficulty.toUpperCase(), level);
+                await addHighScore(playerName, score, selectedDifficulty.toUpperCase(), level, gameDuration);
                 scoreSavedMsg.textContent = `🎉 High Score saved as "${playerName}"!`;
                 scoreSavedMsg.style.display = 'block';
             } else {
