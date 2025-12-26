@@ -597,6 +597,84 @@ def get_player_history(name):
         return jsonify({'error': 'Server error'}), 500
 
 
+# === BACKUP SCHEDULER ===
+
+def init_backup_scheduler():
+    """Initialize background backup scheduler (only in one process)."""
+    # Use a lock file to ensure only one scheduler runs across workers
+    lock_file = DATA_DIR / '.scheduler.lock'
+
+    try:
+        import fcntl
+        lock_fd = open(lock_file, 'w')
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError, ImportError):
+        # Another process has the lock or fcntl not available
+        print("Backup scheduler: another process is running scheduler")
+        return None
+
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        import backup
+
+        scheduler = BackgroundScheduler()
+
+        # Local backup every minute
+        scheduler.add_job(
+            backup.local_backup,
+            'interval',
+            minutes=1,
+            id='local_backup',
+            name='Local backup every minute'
+        )
+
+        # Offload to Backblaze every 6 hours
+        scheduler.add_job(
+            backup.offload_to_backblaze,
+            'interval',
+            hours=6,
+            id='b2_offload',
+            name='Backblaze offload every 6 hours'
+        )
+
+        scheduler.start()
+        print("Backup scheduler started (1min local, 6hr B2 offload)")
+        return scheduler
+
+    except ImportError as e:
+        print(f"Backup scheduler not available: {e}")
+        return None
+
+
+# === BACKUP API ===
+
+@app.route('/api/backup/list', methods=['GET'])
+def list_backups():
+    """List available backups."""
+    try:
+        import backup
+        backups = backup.list_backups()
+        return jsonify(backups)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/backup/restore', methods=['POST'])
+def restore_backup():
+    """Restore from latest backup."""
+    try:
+        import backup
+        if backup.restore_latest():
+            return jsonify({'success': True})
+        return jsonify({'error': 'No backups available'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# Initialize scheduler when running with gunicorn
+backup_scheduler = None
+
+
 if __name__ == '__main__':
     # Create empty leaderboard file if it doesn't exist
     if not LEADERBOARD_FILE.exists():
@@ -605,5 +683,12 @@ if __name__ == '__main__':
     print(f"Leaderboard file: {LEADERBOARD_FILE}")
     print(f"Redis enabled: {USE_REDIS}")
     print(f"PostgreSQL enabled: {USE_POSTGRES}")
+
+    # Start backup scheduler
+    backup_scheduler = init_backup_scheduler()
+
     print("Starting server on http://0.0.0.0:8080")
     app.run(host='0.0.0.0', port=8080, debug=True, threaded=True)
+else:
+    # Running under gunicorn - start scheduler
+    backup_scheduler = init_backup_scheduler()
