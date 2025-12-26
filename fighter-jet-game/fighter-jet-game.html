@@ -438,11 +438,17 @@
         }
         .modal-btn:hover { transform: scale(1.05); }
         /* Instructions Modal */
-        #instructionsModal .modal { max-width: 400px; }
-        #instructionsModal .instructions-content { text-align: left; color: #ccc; font-size: 13px; line-height: 1.8; }
-        #instructionsModal .instructions-content p { margin: 8px 0; }
+        #instructionsModal .modal { max-width: 480px; }
+        #instructionsModal .instructions-content { text-align: left; color: #ccc; font-size: 12px; line-height: 1.7; }
+        #instructionsModal .instructions-content p { margin: 6px 0; }
         #instructionsModal .key { background: #4a6cf7; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
         #instructionsModal .pickup { color: #6af; }
+        #instructionsModal .pickup-green { color: #4ade80; }
+        #instructionsModal .pickup-red { color: #ff6b6b; }
+        #instructionsModal .pickup-blue { color: #60a5fa; }
+        #instructionsModal .pickup-gold { color: #ffd700; }
+        #instructionsModal .danger { color: #ff4444; }
+        #instructionsModal .section-title { color: #6af; margin-top: 12px !important; font-weight: bold; }
         .close-modal {
             padding: 10px 25px; font-size: 14px; margin-top: 15px;
             background: #555; color: #fff; border: none; border-radius: 20px; cursor: pointer;
@@ -580,15 +586,30 @@
             <div class="modal">
                 <h2>How to Play</h2>
                 <div class="instructions-content">
+                    <p class="section-title">Controls:</p>
                     <p><span class="key">WASD</span> or <span class="key">Arrows</span> - Move your jet</p>
                     <p><span class="key">Space</span> - Shoot</p>
                     <p><span class="key">Q</span> - Swap weapon</p>
                     <p><span class="key">P</span> or <span class="key">ESC</span> - Pause</p>
-                    <p style="margin-top: 15px; color: #6af;">Collect power-ups:</p>
-                    <p><span class="pickup">MG</span> - Machine Gun</p>
-                    <p><span class="pickup">BZ</span> - Bazooka</p>
-                    <p><span class="pickup">LS</span> - Laser Beam</p>
-                    <p style="margin-top: 15px; color: #ffd700;">Defeat bosses to advance levels!</p>
+
+                    <p class="section-title">Weapons (collect to unlock):</p>
+                    <p><span class="pickup">MG</span> - Machine Gun (rapid fire)</p>
+                    <p><span class="pickup">BZ</span> - Bazooka (explosive)</p>
+                    <p><span class="pickup">LS</span> - Laser Beam (continuous)</p>
+
+                    <p class="section-title">Power-ups:</p>
+                    <p><span class="pickup-green">Shield</span> - Temporary invincibility</p>
+                    <p><span class="pickup-red">MAX Heart</span> - Restores ALL lives</p>
+                    <p><span class="pickup-gold">+1 / +2 / +3 UP</span> - Adds extra lives</p>
+                    <p><span class="pickup-blue">Ghost</span> - 5 sec invisible (can't shoot, can collect)</p>
+                    <p><span class="pickup">Bomb</span> - Clears enemies on screen</p>
+
+                    <p class="section-title">Hazards (avoid!):</p>
+                    <p><span class="danger">Mines</span> - Floating explosives (-1 life)</p>
+                    <p><span class="danger">Walls</span> - Block bullets, instant death on touch</p>
+                    <p style="color: #888; font-size: 11px;">(Tip: Hide behind walls to block enemy fire!)</p>
+
+                    <p style="margin-top: 12px; color: #ffd700;">Defeat 6 bosses to win the game!</p>
                 </div>
                 <button class="close-modal" onclick="closeInstructionsModal()">Got it!</button>
             </div>
