@@ -3282,7 +3282,7 @@
         function checkLevelUp() {
             // Determine which boss should spawn based on score thresholds
             // Boss 1: 1k, Boss 2: 3k, Boss 3: 5k, Boss 4: 7k, Boss 5: 9k, Boss 6: 11k
-            let targetLevel = 1;
+            let targetLevel = 0;
             for (let lvl = 6; lvl >= 1; lvl--) {
                 if (score >= bossThresholds[lvl]) {
                     targetLevel = lvl;
@@ -3290,7 +3290,7 @@
                 }
             }
 
-            if (targetLevel > level && !bossActive) {
+            if (targetLevel >= level && !bossActive) {
                 // Check if boss for current level has been defeated
                 if (!bossDefeated.includes(level)) {
                     // Spawn boss for current level
