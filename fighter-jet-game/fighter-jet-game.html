@@ -846,9 +846,11 @@
                 enemies: enemies.map(e => ({ x: e.x, y: e.y, width: e.width, height: e.height, weapon: e.weapon, color: e.color })),
                 bullets: bullets.map(b => ({ x: b.x, y: b.y, isEnemy: b.isEnemy, type: b.type, color: b.color })),
                 boss: boss ? { x: boss.x, y: boss.y, width: boss.width, height: boss.height, health: boss.health, maxHealth: boss.maxHealth, phase: boss.phase } : null,
-                powerups: powerups.map(p => ({ x: p.x, y: p.y })),
+                powerups: powerups.map(p => ({ x: p.x, y: p.y, type: p.type })),
                 bombs: bombs.map(b => ({ x: b.x, y: b.y })),
                 walls: walls.map(w => ({ x: w.x, y: w.y, width: w.width, height: w.height, gapY: w.gapY, gapHeight: w.gapHeight })),
+                weaponPickups: weaponPickups.map(w => ({ x: w.x, y: w.y, weapon: w.weapon })),
+                spaceObjects: spaceObjects.map(s => ({ x: s.x, y: s.y, type: s.type, size: s.size })),
                 score: score,
                 level: level,
                 lives: lives,
@@ -1245,6 +1247,7 @@
                     <div class="spec-stat">Score: <span class="spec-score">0</span></div>
                     <div class="spec-stat">Lv: <span class="spec-level">1</span></div>
                     <div class="spec-stat">❤️ <span class="spec-lives">3</span></div>
+                    <div class="spec-stat">🔫 <span class="spec-weapon">pistol</span></div>
                 </div>
                 <div class="spec-chat">
                     <div class="spec-chat-messages" id="chat-${playerId}"></div>
@@ -1267,6 +1270,7 @@
             return {
                 windowId,
                 playerId,
+                playerName: player.name || 'Unknown',
                 element: windowEl,
                 canvas,
                 ctx,
@@ -1308,11 +1312,26 @@
                     const response = await fetch(`${API_BASE}/api/players/spectate/${playerId}?spectatorId=${spectatorId}`);
                     if (!response.ok) {
                         if (response.status === 404) {
-                            renderSpectatorWindowMessage(windowData, 'Not playing');
+                            // Player left or restarted - look for them by name
+                            const playerName = windowData.playerName;
+                            if (playerName) {
+                                const newPlayer = livePlayers.find(p => p.name === playerName && p.id !== playerId && p.status === 'playing');
+                                if (newPlayer) {
+                                    // Found player with new ID - switch to watching them
+                                    closeSpectatorWindow(playerId);
+                                    spectatePlayer(newPlayer.id);
+                                    return;
+                                }
+                            }
+                            renderSpectatorWindowMessage(windowData, 'Waiting for player...');
                         }
                         return;
                     }
                     const data = await response.json();
+                    // Track player status for auto-reconnect
+                    if (data.player) {
+                        windowData.lastStatus = data.player.status;
+                    }
                     if (data.state) {
                         renderSpectatorWindowGame(windowData, data.state);
                         updateSpectatorWindowStats(windowData, data.state);
@@ -1393,6 +1412,41 @@
                 });
             }
 
+            // Powerups (shield, health, etc.)
+            if (state.powerups) {
+                state.powerups.forEach(p => {
+                    ctx.fillStyle = p.type === 'shield' ? '#00ffff' : '#4ade80';
+                    ctx.beginPath();
+                    ctx.arc(p.x * scaleX, p.y * scaleY, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                });
+            }
+
+            // Weapon pickups
+            if (state.weaponPickups) {
+                state.weaponPickups.forEach(w => {
+                    ctx.fillStyle = w.weapon === 'laser' ? '#ff0' : w.weapon === 'spread' ? '#f80' : '#0ff';
+                    ctx.fillRect(w.x * scaleX - 5, w.y * scaleY - 5, 10, 10);
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(w.x * scaleX - 5, w.y * scaleY - 5, 10, 10);
+                });
+            }
+
+            // Space objects (asteroids, etc.)
+            if (state.spaceObjects) {
+                state.spaceObjects.forEach(s => {
+                    ctx.fillStyle = '#666';
+                    const size = (s.size || 20) * scaleX;
+                    ctx.beginPath();
+                    ctx.arc(s.x * scaleX, s.y * scaleY, size / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
             // Bullets
             if (state.bullets) {
                 state.bullets.forEach(b => {
@@ -1466,6 +1520,8 @@
             el.querySelector('.spec-score').textContent = (state.score || 0).toLocaleString();
             el.querySelector('.spec-level').textContent = state.level || 1;
             el.querySelector('.spec-lives').textContent = state.lives || 0;
+            const weaponEl = el.querySelector('.spec-weapon');
+            if (weaponEl) weaponEl.textContent = state.currentWeapon || 'pistol';
         }
 
         // Close all spectator windows
@@ -3266,7 +3322,8 @@
             if (isMobile) {
                 document.getElementById('touchControls').classList.add('show');
             }
-            // Join as live player and show sidebar
+            // Leave old session first (in case of Play Again), then join as new player
+            await leaveAsPlayer();
             await joinAsPlayer();
             await startGameSession();
             document.getElementById('onlinePlayersBar').classList.add('show');
