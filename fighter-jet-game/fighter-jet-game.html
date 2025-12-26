@@ -247,6 +247,13 @@
             background: rgba(100, 170, 255, 0.3); border: 1px solid #6af; color: #6af;
             padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
         }
+        #chatInput input:disabled, #chatInput button:disabled {
+            opacity: 0.4; cursor: not-allowed;
+        }
+        #chatMessages .chat-msg.from-player {
+            background: rgba(100, 170, 255, 0.15); padding: 2px 4px; border-radius: 3px;
+        }
+        #chatMessages .chat-msg.from-player .msg-author { color: #6af; }
         /* Legacy sidebar - hidden but kept for compatibility */
         #livePlayersSidebar { display: none !important; }
         .live-player {
@@ -320,6 +327,28 @@
         }
         .spectator-window .spec-stat { color: #aaa; }
         .spectator-window .spec-stat span { color: #fff; font-weight: bold; }
+        .spectator-window .spec-chat {
+            display: flex; flex-direction: column; padding: 4px 6px;
+            border-top: 1px solid rgba(74, 108, 247, 0.3); max-height: 80px;
+        }
+        .spectator-window .spec-chat-messages {
+            flex: 1; overflow-y: auto; font-size: 9px; color: #ccc; max-height: 40px;
+        }
+        .spectator-window .spec-chat-messages .chat-msg { padding: 1px 0; }
+        .spectator-window .spec-chat-messages .msg-author { color: #6af; font-weight: bold; }
+        .spectator-window .spec-chat-messages .chat-msg.from-player { background: rgba(100, 170, 255, 0.15); padding: 1px 3px; border-radius: 2px; }
+        .spectator-window .spec-chat-messages .chat-msg.from-player .msg-author { color: #4ade80; }
+        .spectator-window .spec-chat-input {
+            display: flex; gap: 4px; margin-top: 4px;
+        }
+        .spectator-window .spec-chat-input input {
+            flex: 1; background: rgba(255,255,255,0.1); border: 1px solid #444;
+            border-radius: 3px; padding: 3px 6px; color: #fff; font-size: 10px;
+        }
+        .spectator-window .spec-chat-input button {
+            background: rgba(100, 170, 255, 0.3); border: 1px solid #6af;
+            border-radius: 3px; padding: 3px 6px; cursor: pointer; font-size: 10px;
+        }
         /* Container for all spectator windows */
         #spectatorContainer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 499; }
         #spectatorContainer .spectator-window { pointer-events: auto; }
@@ -371,22 +400,31 @@
             border: 2px solid #6af; color: #6af; border-radius: 25px; cursor: pointer;
         }
         .btn-secondary:hover { background: rgba(100, 170, 255, 0.2); }
-        /* Lobby sidebar (same style as game sidebar) */
+        /* Lobby sidebar - positioned at bottom of start screen */
         #lobbySidebar {
-            position: absolute; top: 60px; left: 10px; width: 160px;
-            background: rgba(0, 0, 0, 0.7); border: 2px solid rgba(100, 170, 255, 0.5);
-            border-radius: 10px; padding: 10px; z-index: 50;
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 700px;
+            background: rgba(0, 0, 0, 0.85); border: 2px solid rgba(100, 170, 255, 0.5);
+            border-radius: 10px; padding: 12px 15px; z-index: 50;
         }
-        #lobbySidebar h4 { color: #6af; font-size: 12px; margin-bottom: 8px; text-align: center; }
-        #lobbySidebar .player-count { color: #4ade80; font-size: 10px; text-align: center; margin-bottom: 5px; }
+        #lobbySidebar h4 { color: #6af; font-size: 14px; margin-bottom: 6px; text-align: center; }
+        #lobbySidebar .player-count { color: #4ade80; font-size: 11px; text-align: center; margin-bottom: 8px; }
+        #lobbyPlayersList {
+            display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+            max-height: 150px; overflow-y: auto;
+        }
+        #lobbyPlayersList .live-player {
+            flex: 0 1 auto; min-width: 140px; max-width: 200px;
+        }
         @media (max-width: 850px) {
             #gameCanvas { max-width: 100vw; max-height: 65vh; }
             #startScreen h1, #gameOverScreen h1 { font-size: 26px; }
             .diff-btn { padding: 8px 14px; font-size: 12px; }
             #livePlayersSidebar { width: 140px; top: 50px; right: 5px; padding: 6px; max-height: 300px; }
             #livePlayersSidebar h4 { font-size: 10px; }
-            #lobbySidebar { width: 140px; top: 50px; left: 5px; padding: 6px; }
-            #lobbySidebar h4 { font-size: 10px; }
+            #lobbySidebar { width: 95%; bottom: 10px; padding: 8px; }
+            #lobbySidebar h4 { font-size: 11px; }
+            #lobbyPlayersList { max-height: 100px; }
             .live-player { font-size: 9px; padding: 4px 5px; }
             .live-player .player-action { font-size: 8px; }
             .live-player .player-meta { font-size: 8px; }
@@ -526,8 +564,8 @@
             </div>
             <div id="chatMessages"></div>
             <div id="chatInput">
-                <input type="text" id="chatMessageInput" placeholder="Send a message..." maxlength="100">
-                <button onclick="sendChatMessage()">Send</button>
+                <input type="text" id="chatMessageInput" placeholder="Reply to spectators..." maxlength="100" disabled onkeypress="if(event.key==='Enter')sendPlayerComment()">
+                <button onclick="sendPlayerComment()" disabled>Send</button>
             </div>
         </div>
     </div><!-- End gameWrapper -->
@@ -1026,22 +1064,87 @@
             }
         }
 
-        // === CHAT FUNCTIONS ===
-        let chatMessages = [];
-        let chatPollingInterval = null;
+        // === SPECTATOR CHAT FUNCTIONS ===
+        const lastCommentIds = new Map(); // playerId -> Set of seen comment timestamps
 
-        async function sendChatMessage() {
-            const input = document.getElementById('chatMessageInput');
-            if (!input) return;
-            const message = input.value.trim();
+        async function sendSpectatorComment(playerId, inputEl) {
+            if (!inputEl) return;
+            const message = inputEl.value.trim();
             if (!message) return;
 
-            // For now, chat is local only (would need backend for multi-user chat)
-            addLocalChatMessage(myPlayerName || 'You', message, true);
-            input.value = '';
+            try {
+                await fetch(`${API_BASE}/api/players/spectate/${playerId}/comment`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        from: myPlayerName || 'Spectator',
+                        message: message,
+                        isPlayer: false
+                    })
+                });
+                inputEl.value = '';
+                // Immediately show the message locally
+                addCommentToChat(playerId, myPlayerName || 'Spectator', message);
+            } catch (e) { console.error('Failed to send comment:', e); }
         }
 
-        function addLocalChatMessage(author, message, isPlayer = false) {
+        async function fetchSpectatorComments(playerId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/players/spectate/${playerId}/comments`);
+                if (response.ok) {
+                    const comments = await response.json();
+                    renderCommentsForPlayer(playerId, comments);
+                }
+            } catch (e) { /* Ignore fetch errors */ }
+        }
+
+        function renderCommentsForPlayer(playerId, comments) {
+            const isOwnGame = playerId === myPlayerId;
+            const chatEl = isOwnGame ? document.getElementById('chatMessages') : document.getElementById(`chat-${playerId}`);
+            if (!chatEl) return;
+
+            // Track seen comments to avoid duplicates
+            if (!lastCommentIds.has(playerId)) {
+                lastCommentIds.set(playerId, new Set());
+            }
+            const seen = lastCommentIds.get(playerId);
+
+            // Add new comments (comments come newest first, so reverse)
+            comments.reverse().forEach(c => {
+                const commentId = c.time + c.from + c.message;
+                if (!seen.has(commentId)) {
+                    seen.add(commentId);
+                    if (isOwnGame) {
+                        addCommentToPlayerChat(c.from, c.message, c.isPlayer);
+                    } else {
+                        addCommentToChat(playerId, c.from, c.message, c.isPlayer);
+                    }
+                }
+            });
+        }
+
+        function addCommentToChat(playerId, author, message, isPlayer = false) {
+            const chatEl = document.getElementById(`chat-${playerId}`);
+            if (!chatEl) return;
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'chat-msg' + (isPlayer ? ' from-player' : '');
+            msgDiv.innerHTML = `<span class="msg-author">${author}:</span> ${message}`;
+            chatEl.appendChild(msgDiv);
+            chatEl.scrollTop = chatEl.scrollHeight;
+
+            // Keep only last 30 messages in view
+            while (chatEl.children.length > 30) {
+                chatEl.removeChild(chatEl.firstChild);
+            }
+
+            // Also show on player's screen if this is their game
+            if (playerId === myPlayerId) {
+                addCommentToPlayerChat(author, message, isPlayer);
+            }
+        }
+
+        function addCommentToPlayerChat(author, message, isPlayer = false) {
             const chatEl = document.getElementById('chatMessages');
             if (!chatEl) return;
 
@@ -1051,23 +1154,50 @@
             chatEl.appendChild(msgDiv);
             chatEl.scrollTop = chatEl.scrollHeight;
 
-            // Keep only last 50 messages
             while (chatEl.children.length > 50) {
                 chatEl.removeChild(chatEl.firstChild);
             }
         }
 
-        // Enter key to send chat
-        document.addEventListener('DOMContentLoaded', () => {
-            const chatInput = document.getElementById('chatMessageInput');
-            if (chatInput) {
-                chatInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        sendChatMessage();
-                    }
+        // Player can send chat message (only after game over)
+        async function sendPlayerComment() {
+            const input = document.getElementById('chatMessageInput');
+            if (!input || !myPlayerId) return;
+            const message = input.value.trim();
+            if (!message) return;
+
+            try {
+                await fetch(`${API_BASE}/api/players/spectate/${myPlayerId}/comment`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        from: myPlayerName || 'Player',
+                        message: message,
+                        isPlayer: true
+                    })
                 });
+                input.value = '';
+                addCommentToPlayerChat(myPlayerName || 'Player', message, true);
+            } catch (e) { console.error('Failed to send comment:', e); }
+        }
+
+        // Poll for comments on player's own game (to see spectator messages)
+        let playerCommentPollInterval = null;
+
+        function startPlayerCommentPolling() {
+            if (!myPlayerId) return;
+            if (playerCommentPollInterval) clearInterval(playerCommentPollInterval);
+            playerCommentPollInterval = setInterval(() => {
+                fetchSpectatorComments(myPlayerId);
+            }, 2000);
+        }
+
+        function stopPlayerCommentPolling() {
+            if (playerCommentPollInterval) {
+                clearInterval(playerCommentPollInterval);
+                playerCommentPollInterval = null;
             }
-        });
+        }
 
         // === SPECTATOR MODE - Multiple Windows ===
         const spectatorWindows = new Map(); // playerId -> window data
@@ -1103,18 +1233,25 @@
             windowEl.innerHTML = `
                 <div class="spec-header">
                     <div>
-                        <span class="spec-title">${player.name}</span>
+                        <span class="spec-title">${player.name || 'Unknown'}</span>
                         <span class="spec-info">${player.difficulty || 'EASY'} | Lv.${player.level || 1}</span>
                     </div>
                     <button class="spec-close" onclick="closeSpectatorWindow('${playerId}')">✕</button>
                 </div>
                 <div class="spec-canvas-container">
-                    <canvas class="spec-canvas" width="320" height="200"></canvas>
+                    <canvas class="spec-canvas" width="320" height="160"></canvas>
                 </div>
                 <div class="spec-stats">
                     <div class="spec-stat">Score: <span class="spec-score">0</span></div>
                     <div class="spec-stat">Lv: <span class="spec-level">1</span></div>
                     <div class="spec-stat">❤️ <span class="spec-lives">3</span></div>
+                </div>
+                <div class="spec-chat">
+                    <div class="spec-chat-messages" id="chat-${playerId}"></div>
+                    <div class="spec-chat-input">
+                        <input type="text" placeholder="Comment..." maxlength="100" onkeypress="if(event.key==='Enter')sendSpectatorComment('${playerId}', this)">
+                        <button onclick="sendSpectatorComment('${playerId}', this.previousElementSibling)">💬</button>
+                    </div>
                 </div>
             `;
 
@@ -1187,8 +1324,14 @@
                 } catch (e) { /* ignore */ }
             }, 150);
 
-            // Initial poll
+            // Poll for comments every 2 seconds
+            windowData.commentPollInterval = setInterval(() => {
+                fetchSpectatorComments(playerId);
+            }, 2000);
+
+            // Initial polls
             fetch(`${API_BASE}/api/players/spectate/${playerId}?spectatorId=${spectatorId}`).catch(() => {});
+            fetchSpectatorComments(playerId);
         }
 
         function closeSpectatorWindow(playerId) {
@@ -1197,6 +1340,7 @@
 
             // Stop polling
             if (windowData.pollInterval) clearInterval(windowData.pollInterval);
+            if (windowData.commentPollInterval) clearInterval(windowData.commentPollInterval);
 
             // Tell server we stopped watching
             const spectatorId = myPlayerId || 'spec_' + Math.random().toString(36).substr(2, 8);
@@ -3128,6 +3272,7 @@
             document.getElementById('onlinePlayersBar').classList.add('show');
             document.getElementById('chatBar').classList.add('show');
             startPlayerPolling();
+            startPlayerCommentPolling();
             updatePlayerStatus('playing');
             reportAction('started_game');
         }
@@ -3179,6 +3324,22 @@
             document.getElementById('gameOverScreen').classList.remove('hidden');
             playGameOver();
             stopBackgroundMusic();
+            // Enable chat input after game over so player can respond to spectators
+            enablePlayerChatInput();
+        }
+
+        function enablePlayerChatInput() {
+            const input = document.getElementById('chatMessageInput');
+            const btn = document.querySelector('#chatInput button');
+            if (input) input.disabled = false;
+            if (btn) btn.disabled = false;
+        }
+
+        function disablePlayerChatInput() {
+            const input = document.getElementById('chatMessageInput');
+            const btn = document.querySelector('#chatInput button');
+            if (input) { input.disabled = true; input.value = ''; }
+            if (btn) btn.disabled = true;
         }
 
         async function backToMenu() {
@@ -3187,6 +3348,11 @@
             document.getElementById('lobbySidebar').style.display = 'block';
             // Clean up when going back to menu
             stopPlayerPolling();
+            stopPlayerCommentPolling();
+            disablePlayerChatInput();
+            document.getElementById('chatMessages').innerHTML = '';
+            // Clear comment history for new game session
+            if (myPlayerId) lastCommentIds.delete(myPlayerId);
             document.getElementById('onlinePlayersBar').classList.remove('show');
             document.getElementById('chatBar').classList.remove('show');
             await leaveAsPlayer();
@@ -3206,8 +3372,13 @@
             document.getElementById('bossTaunt').classList.remove('show');
             document.getElementById('pauseOverlay').classList.remove('show');
             document.getElementById('touchControls').classList.remove('show');
-            // Clean up live players
+            // Clean up live players and chat
             stopPlayerPolling();
+            stopPlayerCommentPolling();
+            disablePlayerChatInput();
+            document.getElementById('chatMessages').innerHTML = '';
+            // Clear comment history for new game session
+            if (myPlayerId) lastCommentIds.delete(myPlayerId);
             document.getElementById('onlinePlayersBar').classList.remove('show');
             document.getElementById('chatBar').classList.remove('show');
             await leaveAsPlayer();
