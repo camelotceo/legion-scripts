@@ -1,17 +1,35 @@
-version: '3.8'
-
 services:
   fighter-jet-game:
     build: .
     container_name: fighter-jet-game
     restart: unless-stopped
+    environment:
+      - B2_BUCKET=fighter-game-backup
+      - B2_KEY_ID=00512c269f55faa0000000004
+      - B2_APP_KEY=K005uLKtfZrzmWEWPbDAvk2kod4hHI0
+      - REDIS_URL=redis://redis:6379
     volumes:
       - ./data:/app/data
+      - ./fighter-jet-game.html:/app/fighter-jet-game.html:ro
     networks:
       - proxy-network
+    depends_on:
+      - redis
     expose:
       - "8080"
+
+  redis:
+    image: redis:7-alpine
+    container_name: fighter-jet-redis
+    restart: unless-stopped
+    networks:
+      - proxy-network
+    volumes:
+      - redis_data:/data
 
 networks:
   proxy-network:
     external: true
+
+volumes:
+  redis_data:
