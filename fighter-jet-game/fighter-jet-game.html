@@ -1701,7 +1701,9 @@
                     "Is that all you've got?",
                     "You cannot escape!"
                 ],
-                attackPattern: 'spread'
+                attackPattern: 'spread',
+                laughFreq: 180,
+                laughType: 'dark'
             },
             2: {
                 name: 'CYBER KRAKEN',
@@ -1717,12 +1719,14 @@
                     "No one survives the Kraken!",
                     "Surrender to darkness!"
                 ],
-                attackPattern: 'spiral'
+                attackPattern: 'spiral',
+                laughFreq: 120,
+                laughType: 'gurgle'
             },
             3: {
                 name: 'INFERNO TITAN',
                 type: 'monster',
-                health: 40, maxHealth: 40,
+                health: 45, maxHealth: 45,
                 width: 180, height: 120,
                 speed: 100, fireRate: 0.5,
                 color: '#FF4500',
@@ -1733,12 +1737,14 @@
                     "Witness true destruction!",
                     "Nothing survives my inferno!"
                 ],
-                attackPattern: 'wave'
+                attackPattern: 'wave',
+                laughFreq: 100,
+                laughType: 'roar'
             },
             4: {
                 name: 'QUANTUM DESTROYER',
                 type: 'aircraft',
-                health: 50, maxHealth: 50,
+                health: 68, maxHealth: 68,
                 width: 200, height: 100,
                 speed: 180, fireRate: 0.4,
                 color: '#00CED1',
@@ -1749,12 +1755,14 @@
                     "Reality bends to my will!",
                     "Prepare for annihilation!"
                 ],
-                attackPattern: 'random'
+                attackPattern: 'random',
+                laughFreq: 200,
+                laughType: 'glitch'
             },
             5: {
                 name: 'OMEGA OVERLORD',
                 type: 'monster',
-                health: 75, maxHealth: 75,
+                health: 102, maxHealth: 102,
                 width: 220, height: 140,
                 speed: 130, fireRate: 0.3,
                 color: '#FFD700',
@@ -1765,12 +1773,14 @@
                     "BOW BEFORE THE OVERLORD!",
                     "THIS IS YOUR DOOM!"
                 ],
-                attackPattern: 'all'
+                attackPattern: 'all',
+                laughFreq: 80,
+                laughType: 'boom'
             },
             6: {
                 name: 'LEGION SUPREME',
                 type: 'ultimate',
-                health: 150, maxHealth: 150,
+                health: 153, maxHealth: 153,
                 width: 280, height: 180,
                 speed: 250, fireRate: 0.2,
                 color: '#FF0080',
@@ -1785,7 +1795,9 @@
                     "TREMBLE BEFORE LEGION SUPREME!"
                 ],
                 attackPattern: 'ultimate',
-                isSuper: true
+                isSuper: true,
+                laughFreq: 60,
+                laughType: 'demonic'
             }
         };
 
@@ -1847,6 +1859,12 @@
         let bombs = [];
         let walls = [];
         let weaponPickups = [];
+        let mines = [];
+
+        // Ghost mode state
+        let ghostActive = false;
+        let ghostStartTime = 0;
+        const ghostDuration = 5000;
 
         const keys = {};
         let touchMove = { x: 0, y: 0 };
@@ -1917,6 +1935,71 @@
         }
         function playLevelUp() {
             [392, 523, 659, 784].forEach((freq, i) => setTimeout(() => playSound(freq, 'square', 0.15, 0.25), i * 80));
+        }
+
+        // === BOSS EVIL LAUGHS ===
+        function playBossLaugh(laughType) {
+            if (isMuted) return;
+            switch(laughType) {
+                case 'dark':
+                    // Dark Phantom: Low menacing chuckle
+                    [120, 100, 80, 100, 120, 80].forEach((freq, i) =>
+                        setTimeout(() => playSound(freq, 'sawtooth', 0.15, 0.3), i * 100));
+                    break;
+                case 'gurgle':
+                    // Cyber Kraken: Bubbling gurgle laugh
+                    for (let i = 0; i < 8; i++) {
+                        setTimeout(() => playSound(150 + Math.random() * 100, 'sine', 0.1, 0.25), i * 80);
+                    }
+                    break;
+                case 'roar':
+                    // Inferno Titan: Deep fiery roar laugh
+                    [60, 80, 60, 100, 60, 80, 120].forEach((freq, i) =>
+                        setTimeout(() => playSound(freq, 'sawtooth', 0.2, 0.4), i * 120));
+                    break;
+                case 'glitch':
+                    // Quantum Destroyer: Glitchy distorted laugh
+                    for (let i = 0; i < 10; i++) {
+                        setTimeout(() => playSound(200 + Math.random() * 800, 'square', 0.05, 0.2), i * 50);
+                    }
+                    break;
+                case 'boom':
+                    // Omega Overlord: Booming godlike laugh
+                    [80, 100, 120, 100, 80, 60, 80, 100, 120].forEach((freq, i) =>
+                        setTimeout(() => playSound(freq, 'triangle', 0.25, 0.35), i * 110));
+                    break;
+                case 'demonic':
+                    // Legion Supreme: Demonic multi-layered laugh
+                    [50, 100, 150].forEach(baseFreq => {
+                        [1, 1.2, 0.8, 1.1, 0.9, 1.3, 0.7, 1].forEach((mult, i) =>
+                            setTimeout(() => playSound(baseFreq * mult, 'sawtooth', 0.15, 0.2), i * 90));
+                    });
+                    break;
+            }
+        }
+
+        function playGhostActivate() {
+            [800, 600, 400, 300].forEach((freq, i) => setTimeout(() => playSound(freq, 'sine', 0.2, 0.15), i * 80));
+        }
+
+        function playLifeUp() {
+            [523, 659, 784, 1047].forEach((freq, i) => setTimeout(() => playSound(freq, 'square', 0.15, 0.3), i * 60));
+        }
+
+        function playMineExplosion() {
+            if (isMuted) return;
+            const bufferSize = audioContext.sampleRate * 0.4;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
+            const source = audioContext.createBufferSource();
+            const g = audioContext.createGain();
+            source.buffer = buffer;
+            source.connect(g);
+            g.connect(audioContext.destination);
+            g.gain.setValueAtTime(0.4, audioContext.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+            source.start();
         }
 
         // === MUSIC ===
@@ -2229,10 +2312,9 @@
             const bossData = BOSSES[levelNum];
             if (!bossData) return;
 
-            // Clear regular enemies
+            // Clear enemies and mines but keep powerups/weapons
             enemies = [];
-            walls = [];
-            bombs = [];
+            mines = [];
 
             const diff = getDiffSettings();
             boss = {
@@ -2248,7 +2330,8 @@
                 moveDirY: 0,
                 phase: 0,
                 entering: true,
-                tauntIndex: 0
+                tauntIndex: 0,
+                laughTimer: 0
             };
             bossActive = true;
 
@@ -2257,8 +2340,9 @@
             document.getElementById('bossName').textContent = bossData.name;
             updateBossHealthBar();
 
-            // Start boss music
+            // Start boss music and play evil laugh
             startBossMusic();
+            playBossLaugh(bossData.laughType);
 
             // Initial taunt
             setTimeout(() => showBossTaunt(), 1000);
@@ -2280,6 +2364,8 @@
             const tauntEl = document.getElementById('bossTaunt');
             tauntEl.textContent = '"' + taunt + '"';
             tauntEl.classList.add('show');
+            // Play evil laugh with taunt
+            playBossLaugh(boss.laughType);
             setTimeout(() => tauntEl.classList.remove('show'), 2500);
         }
 
@@ -2758,9 +2844,19 @@
         }
 
         function spawnPowerup() {
+            // Powerup types: shield, fullLife, ghost, life1, life2, life3
+            const rand = Math.random();
+            let type;
+            if (rand < 0.35) type = 'shield';           // 35% shield
+            else if (rand < 0.45) type = 'fullLife';    // 10% full life restore
+            else if (rand < 0.55) type = 'ghost';       // 10% ghost mode
+            else if (rand < 0.75) type = 'life1';       // 20% +1 life
+            else if (rand < 0.90) type = 'life2';       // 15% +2 lives
+            else type = 'life3';                         // 10% +3 lives
+
             powerups.push({
                 x: Math.random() * (logicalWidth - 60) + 30, y: -30,
-                width: 30, height: 30, speed: 80 * getSpeedMultiplier(), rotation: 0, type: 'shield'
+                width: 30, height: 30, speed: 80 * getSpeedMultiplier(), rotation: 0, type: type
             });
         }
 
@@ -2768,6 +2864,15 @@
             bombs.push({
                 x: Math.random() * (logicalWidth - 60) + 30, y: -30,
                 width: 25, height: 25, speed: 60 * getSpeedMultiplier(), rotation: 0
+            });
+        }
+
+        function spawnMine() {
+            mines.push({
+                x: Math.random() * (logicalWidth - 60) + 30, y: -30,
+                width: 28, height: 28, speed: 40 * getSpeedMultiplier(), rotation: 0,
+                vx: (Math.random() - 0.5) * 60, // Float randomly left/right
+                pulsePhase: Math.random() * Math.PI * 2
             });
         }
 
@@ -3129,15 +3234,99 @@
             ctx.save();
             ctx.translate(powerup.x, powerup.y);
             ctx.rotate(powerup.rotation);
-            ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-            ctx.fillRect(-8, -16, 16, 32);
-            ctx.fillRect(-16, -8, 32, 16);
-            ctx.fillStyle = '#00ff00';
-            ctx.fillRect(-4, -12, 8, 24);
-            ctx.fillRect(-12, -4, 24, 8);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(-3, -8, 6, 16);
-            ctx.fillRect(-8, -3, 16, 6);
+
+            switch(powerup.type) {
+                case 'shield':
+                    // Green shield icon
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+                    ctx.beginPath();
+                    ctx.moveTo(0, -15);
+                    ctx.lineTo(15, -5);
+                    ctx.lineTo(15, 8);
+                    ctx.lineTo(0, 18);
+                    ctx.lineTo(-15, 8);
+                    ctx.lineTo(-15, -5);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.fillStyle = '#00ff00';
+                    ctx.beginPath();
+                    ctx.moveTo(0, -10);
+                    ctx.lineTo(10, -2);
+                    ctx.lineTo(10, 5);
+                    ctx.lineTo(0, 12);
+                    ctx.lineTo(-10, 5);
+                    ctx.lineTo(-10, -2);
+                    ctx.closePath();
+                    ctx.fill();
+                    break;
+
+                case 'fullLife':
+                    // Red heart - full life restore
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                    ctx.beginPath();
+                    ctx.arc(-7, -5, 10, 0, Math.PI * 2);
+                    ctx.arc(7, -5, 10, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ff0000';
+                    ctx.beginPath();
+                    ctx.moveTo(0, 15);
+                    ctx.bezierCurveTo(-15, 0, -15, -10, 0, -10);
+                    ctx.bezierCurveTo(15, -10, 15, 0, 0, 15);
+                    ctx.fill();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('MAX', 0, 3);
+                    break;
+
+                case 'ghost':
+                    // Ghost icon - transparent blue
+                    ctx.fillStyle = 'rgba(100, 200, 255, 0.4)';
+                    ctx.beginPath();
+                    ctx.ellipse(0, -5, 12, 10, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = 'rgba(100, 200, 255, 0.6)';
+                    ctx.beginPath();
+                    ctx.moveTo(-12, 0);
+                    ctx.lineTo(-12, 12);
+                    ctx.lineTo(-6, 8);
+                    ctx.lineTo(0, 12);
+                    ctx.lineTo(6, 8);
+                    ctx.lineTo(12, 12);
+                    ctx.lineTo(12, 0);
+                    ctx.closePath();
+                    ctx.fill();
+                    // Ghost eyes
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(-5, -5, 3, 0, Math.PI * 2);
+                    ctx.arc(5, -5, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+
+                case 'life1':
+                case 'life2':
+                case 'life3':
+                    // +1, +2, +3 life icons - yellow/gold
+                    const lifeAmount = powerup.type === 'life1' ? 1 : (powerup.type === 'life2' ? 2 : 3);
+                    ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ffd700';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#000000';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('+' + lifeAmount, 0, 0);
+                    break;
+            }
             ctx.restore();
         }
 
@@ -3156,6 +3345,39 @@
             ctx.textBaseline = 'middle';
             const labels = { machinegun: 'MG', bazooka: 'BZ', laser: 'LS' };
             ctx.fillText(labels[wp.type], 0, 0);
+            ctx.restore();
+        }
+
+        function drawMine(mine) {
+            ctx.save();
+            ctx.translate(mine.x, mine.y);
+            ctx.rotate(mine.rotation);
+            // Pulsing effect
+            const pulse = 0.8 + Math.sin(mine.pulsePhase) * 0.2;
+            // Outer danger ring
+            ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
+            ctx.beginPath();
+            ctx.arc(0, 0, 18 * pulse, 0, Math.PI * 2);
+            ctx.fill();
+            // Mine body - dark with spikes
+            ctx.fillStyle = '#333333';
+            ctx.beginPath();
+            ctx.arc(0, 0, 12, 0, Math.PI * 2);
+            ctx.fill();
+            // Spikes
+            ctx.fillStyle = '#666666';
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                ctx.save();
+                ctx.rotate(angle);
+                ctx.fillRect(-3, -16, 6, 8);
+                ctx.restore();
+            }
+            // Red warning light
+            ctx.fillStyle = pulse > 1 ? '#ff0000' : '#aa0000';
+            ctx.beginPath();
+            ctx.arc(0, 0, 5, 0, Math.PI * 2);
+            ctx.fill();
             ctx.restore();
         }
 
@@ -3194,6 +3416,9 @@
 
         // === SHOOTING ===
         function shoot() {
+            // Can't shoot while ghost
+            if (ghostActive) return;
+
             const now = Date.now();
             const weapon = WEAPONS[currentWeapon];
             if (now - lastFireTime < weapon.fireRate) return;
@@ -3277,6 +3502,15 @@
             shieldActive = false;
             shieldHits = 0;
             if (!isMuted && gameRunning) startBackgroundMusic(false);
+        }
+
+        function activateGhost() {
+            ghostActive = true;
+            ghostStartTime = Date.now();
+        }
+
+        function deactivateGhost() {
+            ghostActive = false;
         }
 
         function checkLevelUp() {
@@ -3390,13 +3624,39 @@
             bombs.forEach(b => { b.y += b.speed * dt; b.rotation += 2 * dt; });
             bombs = bombs.filter(b => b.y < logicalHeight + 50);
 
+            // Update mines (float left/right as they descend)
+            mines.forEach(m => {
+                m.y += m.speed * dt;
+                m.x += m.vx * dt;
+                m.rotation += 1 * dt;
+                m.pulsePhase += 5 * dt;
+                // Bounce off edges
+                if (m.x < 20 || m.x > logicalWidth - 20) m.vx *= -1;
+            });
+            mines = mines.filter(m => m.y < logicalHeight + 50);
+
             // Update weapon pickups
             weaponPickups.forEach(w => { w.y += w.speed * dt; w.rotation += 2 * dt; });
             weaponPickups = weaponPickups.filter(w => w.y < logicalHeight + 50);
 
+            // Bullet-wall collisions - walls block ALL bullets
+            bullets = bullets.filter(bullet => {
+                for (const wall of walls) {
+                    if (bullet.x > wall.x && bullet.x < wall.x + wall.width &&
+                        bullet.y > wall.y && bullet.y < wall.y + wall.height) {
+                        createExplosion(bullet.x, bullet.y, '#888888', 5);
+                        return false; // Remove bullet
+                    }
+                }
+                return true; // Keep bullet
+            });
+
             // Bullet-enemy collisions
             bullets.forEach((bullet, bi) => {
                 if (bullet.isEnemy) {
+                    // Ghost mode: enemy bullets pass through player
+                    if (ghostActive) return;
+
                     if (checkCollision(bullet, player)) {
                         bullets.splice(bi, 1);
                         if (bullet.explosive) {
@@ -3476,59 +3736,102 @@
                 }
             });
 
-            // Player-enemy collision
-            enemies.forEach((enemy, ei) => {
-                if (checkCollision(enemy, player)) {
-                    enemies.splice(ei, 1);
-                    createExplosion(enemy.x, enemy.y, '#e74c3c');
-                    if (shieldActive) {
-                        shieldHits--; createExplosion(player.x, player.y, '#00ffff');
-                        if (shieldHits <= 0) deactivateShield();
-                    } else if (!isInvincible) {
-                        lives--;
-                        document.getElementById('lives').textContent = lives;
-                        createExplosion(player.x, player.y, jetColors[selectedColor].body);
-                        playExplosion();
-                        if (lives <= 0) {
-                            reportAction('killed_by_drone');
-                            gameOver('killed_by_drone');
+            // Player-enemy collision (ghost mode: pass through enemies)
+            if (!ghostActive) {
+                enemies.forEach((enemy, ei) => {
+                    if (checkCollision(enemy, player)) {
+                        enemies.splice(ei, 1);
+                        createExplosion(enemy.x, enemy.y, '#e74c3c');
+                        if (shieldActive) {
+                            shieldHits--; createExplosion(player.x, player.y, '#00ffff');
+                            if (shieldHits <= 0) deactivateShield();
+                        } else if (!isInvincible) {
+                            lives--;
+                            document.getElementById('lives').textContent = lives;
+                            createExplosion(player.x, player.y, jetColors[selectedColor].body);
+                            playExplosion();
+                            if (lives <= 0) {
+                                reportAction('killed_by_drone');
+                                gameOver('killed_by_drone');
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
 
-            // Player-wall collision
-            walls.forEach(wall => {
-                if (checkWallCollision(player, wall)) {
-                    if (shieldActive) {
-                        shieldHits--; createExplosion(player.x, player.y, '#00ffff');
-                        if (shieldHits <= 0) deactivateShield();
-                    } else if (!isInvincible) {
-                        lives--;
-                        document.getElementById('lives').textContent = lives;
-                        createExplosion(player.x, player.y, jetColors[selectedColor].body);
-                        playExplosion();
-                        if (lives <= 0) {
-                            reportAction('crashed_wall');
-                            gameOver('crashed_wall');
+            // Player-wall collision (ghost mode: pass through walls)
+            if (!ghostActive) {
+                walls.forEach(wall => {
+                    if (checkWallCollision(player, wall)) {
+                        if (shieldActive) {
+                            shieldHits--; createExplosion(player.x, player.y, '#00ffff');
+                            if (shieldHits <= 0) deactivateShield();
+                        } else if (!isInvincible) {
+                            lives--;
+                            document.getElementById('lives').textContent = lives;
+                            createExplosion(player.x, player.y, jetColors[selectedColor].body);
+                            playExplosion();
+                            if (lives <= 0) {
+                                reportAction('crashed_wall');
+                                gameOver('crashed_wall');
+                            }
                         }
+                        player.y = wall.y + wall.height + 30;
                     }
-                    player.y = wall.y + wall.height + 30;
-                }
-            });
+                });
+            }
 
-            // Powerup collection
+            // Powerup collection (can collect while ghost)
             powerups.forEach((p, pi) => {
                 if (checkCollision(p, player)) {
                     powerups.splice(pi, 1);
-                    createExplosion(p.x, p.y, '#00ff00');
-                    playPowerupCollect();
-                    activateShield();
-                    reportAction('got_shield');
+                    const diff = getDiffSettings();
+                    switch(p.type) {
+                        case 'shield':
+                            createExplosion(p.x, p.y, '#00ff00');
+                            playPowerupCollect();
+                            activateShield();
+                            reportAction('got_shield');
+                            break;
+                        case 'fullLife':
+                            createExplosion(p.x, p.y, '#ff0000');
+                            playLifeUp();
+                            lives = diff.lives; // Restore to max lives
+                            document.getElementById('lives').textContent = lives;
+                            reportAction('got_powerup');
+                            break;
+                        case 'ghost':
+                            createExplosion(p.x, p.y, '#64c8ff');
+                            playGhostActivate();
+                            activateGhost();
+                            reportAction('got_powerup');
+                            break;
+                        case 'life1':
+                            createExplosion(p.x, p.y, '#ffd700');
+                            playLifeUp();
+                            lives += 1;
+                            document.getElementById('lives').textContent = lives;
+                            reportAction('got_powerup');
+                            break;
+                        case 'life2':
+                            createExplosion(p.x, p.y, '#ffd700');
+                            playLifeUp();
+                            lives += 2;
+                            document.getElementById('lives').textContent = lives;
+                            reportAction('got_powerup');
+                            break;
+                        case 'life3':
+                            createExplosion(p.x, p.y, '#ffd700');
+                            playLifeUp();
+                            lives += 3;
+                            document.getElementById('lives').textContent = lives;
+                            reportAction('got_powerup');
+                            break;
+                    }
                 }
             });
 
-            // Weapon pickup collection
+            // Weapon pickup collection (can collect while ghost)
             weaponPickups.forEach((w, wi) => {
                 if (checkCollision(w, player)) {
                     weaponPickups.splice(wi, 1);
@@ -3543,8 +3846,35 @@
                 }
             });
 
+            // Mine collision - only if not ghost
+            if (!ghostActive) {
+                mines.forEach((m, mi) => {
+                    if (checkCollision(m, player)) {
+                        mines.splice(mi, 1);
+                        createBigExplosion(m.x, m.y);
+                        playMineExplosion();
+                        if (shieldActive) {
+                            shieldHits--;
+                            createExplosion(player.x, player.y, '#00ffff');
+                            if (shieldHits <= 0) deactivateShield();
+                        } else if (!isInvincible) {
+                            lives--;
+                            document.getElementById('lives').textContent = lives;
+                            createExplosion(player.x, player.y, jetColors[selectedColor].body);
+                            if (lives <= 0) {
+                                reportAction('hit_bomb');
+                                gameOver('hit_bomb');
+                            }
+                        }
+                    }
+                });
+            }
+
             // Shield timer
             if (shieldActive && (Date.now() - shieldStartTime) >= shieldDuration) deactivateShield();
+
+            // Ghost timer
+            if (ghostActive && (Date.now() - ghostStartTime) >= ghostDuration) deactivateGhost();
 
             updateBackground(dt);
             updateParticles(dt);
@@ -3554,6 +3884,7 @@
             drawBackground();
             walls.forEach(drawWall);
             bombs.forEach(drawBomb);
+            mines.forEach(drawMine);
             bullets.forEach(drawBullet);
             enemies.forEach(drawEnemy);
             powerups.forEach(drawPowerup);
@@ -3562,7 +3893,12 @@
             drawParticles();
             if (gameRunning && lives > 0) {
                 drawLaser();
+                // Ghost mode: draw player semi-transparent
+                if (ghostActive) {
+                    ctx.globalAlpha = 0.4 + Math.sin(Date.now() / 100) * 0.2;
+                }
                 drawPlayer();
+                ctx.globalAlpha = 1;
             }
         }
 
@@ -3572,6 +3908,7 @@
         let wallAccumulator = 0;
         let weaponAccumulator = 0;
         let spaceObjAccumulator = 0;
+        let mineAccumulator = 0;
 
         function gameLoop(currentTime) {
             const dt = Math.min((currentTime - lastFrameTime) / 1000, 0.1);
@@ -3583,37 +3920,45 @@
             // Broadcast game state to spectators (throttled)
             broadcastGameState();
 
-            if (gameRunning && !bossActive) {
-                // Only spawn enemies/items when not fighting a boss
+            if (gameRunning) {
                 const diff = getDiffSettings();
-                // Spawn rate decreases (faster spawning) with level and difficulty
-                const baseSpawnRate = Math.max(0.2, (0.8 - level * 0.1) * diff.spawnMult);
-                // Spawn multiple enemies at higher difficulties
-                const enemiesPerSpawn = selectedDifficulty === 'expert' ? 2 : (selectedDifficulty === 'hard' ? (Math.random() < 0.3 ? 2 : 1) : 1);
 
-                spawnAccumulator += dt;
-                if (spawnAccumulator >= baseSpawnRate) {
-                    for (let i = 0; i < enemiesPerSpawn; i++) spawnEnemy();
-                    spawnAccumulator = 0;
-                }
-
+                // Spawn powerups, walls, and mines even during boss fights
                 powerupAccumulator += dt;
                 if (powerupAccumulator >= 6 && Math.random() < 0.4) { spawnPowerup(); powerupAccumulator = 0; }
-
-                bombAccumulator += dt;
-                if (bombAccumulator >= 5 && Math.random() < 0.35) { spawnBomb(); bombAccumulator = 0; }
-
-                // Walls spawn more frequently at higher levels/difficulties
-                const wallSpawnTime = Math.max(1.5, 4 - level * 0.5);
-                const wallChance = 0.2 + level * 0.1 + (selectedDifficulty === 'hard' ? 0.15 : 0) + (selectedDifficulty === 'expert' ? 0.25 : 0);
-                wallAccumulator += dt;
-                if (wallAccumulator >= wallSpawnTime && level >= 2 && Math.random() < wallChance) { spawnWall(); wallAccumulator = 0; }
 
                 weaponAccumulator += dt;
                 if (weaponAccumulator >= 10 && Math.random() < 0.4) { spawnWeaponPickup(); weaponAccumulator = 0; }
 
-                spaceObjAccumulator += dt;
-                if (spaceObjAccumulator >= 6 && Math.random() < 0.5) { spawnSpaceObject(); spaceObjAccumulator = 0; }
+                // Walls spawn after 5 kills
+                const wallSpawnTime = Math.max(1.5, 4 - level * 0.5);
+                const wallChance = 0.2 + level * 0.1 + (selectedDifficulty === 'hard' ? 0.15 : 0) + (selectedDifficulty === 'expert' ? 0.25 : 0);
+                wallAccumulator += dt;
+                if (wallAccumulator >= wallSpawnTime && totalEnemiesKilled >= 5 && Math.random() < wallChance) { spawnWall(); wallAccumulator = 0; }
+
+                // Mines spawn after a few kills
+                mineAccumulator += dt;
+                if (mineAccumulator >= 4 && totalEnemiesKilled >= 3 && Math.random() < 0.3) { spawnMine(); mineAccumulator = 0; }
+
+                // Only spawn enemies and bombs when NOT fighting a boss
+                if (!bossActive) {
+                    // Spawn rate decreases (faster spawning) with level and difficulty
+                    const baseSpawnRate = Math.max(0.2, (0.8 - level * 0.1) * diff.spawnMult);
+                    // Spawn multiple enemies at higher difficulties
+                    const enemiesPerSpawn = selectedDifficulty === 'expert' ? 2 : (selectedDifficulty === 'hard' ? (Math.random() < 0.3 ? 2 : 1) : 1);
+
+                    spawnAccumulator += dt;
+                    if (spawnAccumulator >= baseSpawnRate) {
+                        for (let i = 0; i < enemiesPerSpawn; i++) spawnEnemy();
+                        spawnAccumulator = 0;
+                    }
+
+                    bombAccumulator += dt;
+                    if (bombAccumulator >= 5 && Math.random() < 0.35) { spawnBomb(); bombAccumulator = 0; }
+
+                    spaceObjAccumulator += dt;
+                    if (spaceObjAccumulator >= 6 && Math.random() < 0.5) { spawnSpaceObject(); spaceObjAccumulator = 0; }
+                }
             }
 
             requestAnimationFrame(gameLoop);
@@ -3630,14 +3975,15 @@
             score = 0; lives = diff.lives; level = 1;
             totalEnemiesKilled = 0;
             bullets = []; enemies = []; particles = []; powerups = [];
-            bombs = []; walls = []; weaponPickups = [];
+            bombs = []; walls = []; weaponPickups = []; mines = [];
             player.x = logicalWidth / 2; player.y = logicalHeight - 80;
             spawnAccumulator = 0; powerupAccumulator = 0; bombAccumulator = 0;
-            wallAccumulator = 0; weaponAccumulator = 0; spaceObjAccumulator = 0;
+            wallAccumulator = 0; weaponAccumulator = 0; spaceObjAccumulator = 0; mineAccumulator = 0;
             currentWeapon = 'pistol';
             unlockedWeapons = ['pistol'];
             laserActive = false;
             deactivateShield();
+            ghostActive = false;
             // Reset boss state
             boss = null;
             bossActive = false;
