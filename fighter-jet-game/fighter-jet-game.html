@@ -2613,8 +2613,8 @@
                     });
                 }
 
-                // Award points
-                score += boss.maxHealth * 50;
+                // Award points - fixed 1000 per boss
+                score += 1000;
                 document.getElementById('score').textContent = score;
 
                 // Report boss defeat action
