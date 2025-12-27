@@ -827,11 +827,15 @@ def check_player_name():
     progress = load_player_progress()
 
     if name in progress:
-        # Name exists - player needs a key to use it
+        # Name exists - return saved progress so player can continue
+        player_data = progress[name]
         return jsonify({
             'available': False,
             'hasKey': True,
-            'message': 'This name is taken. Enter your key to continue, or choose a different name.'
+            'savedLevel': player_data.get('level', 1),
+            'savedScore': player_data.get('score', 0),
+            'savedDifficulty': player_data.get('difficulty', 'EASY'),
+            'message': 'Welcome back! Enter your key to continue.'
         })
 
     return jsonify({'available': True})
