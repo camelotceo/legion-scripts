@@ -955,7 +955,11 @@ def validate_continue_key():
     if not valid_key or not player:
         return jsonify({'valid': False, 'error': 'Invalid key'}), 401
 
-    # Mark key as used
+    # Check if key has already been used
+    if valid_key.get('used', False):
+        return jsonify({'valid': False, 'error': 'Key already used. Request a new key.'}), 401
+
+    # Mark key as used (keys are single-use, gives 3 respawns)
     valid_key['used'] = True
     valid_key['usedAt'] = datetime.now().isoformat()
 
