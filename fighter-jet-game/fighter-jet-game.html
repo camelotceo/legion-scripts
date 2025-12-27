@@ -829,6 +829,7 @@
                     </div>
                 </div>
                 <button class="modal-btn" onclick="startGame()">Start Game</button>
+                <button class="btn-secondary" style="margin-top: 10px;" onclick="closeSetupModal()">Back</button>
             </div>
         </div>
         <!-- Instructions Modal -->
@@ -2244,6 +2245,7 @@
 
         function closeSetupModal() {
             document.getElementById('setupModal').classList.remove('show');
+            openModeSelectModal();
         }
 
         // === MULTIPLAYER STATE ===
