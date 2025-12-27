@@ -832,8 +832,8 @@ def check_player_name():
         return jsonify({
             'available': False,
             'hasKey': True,
-            'savedLevel': player_data.get('level', 1),
-            'savedScore': player_data.get('score', 0),
+            'savedLevel': player_data.get('currentLevel', 1),
+            'savedScore': player_data.get('currentScore', 0),
             'savedDifficulty': player_data.get('difficulty', 'EASY'),
             'message': 'Welcome back! Enter your key to continue.'
         })
@@ -957,7 +957,7 @@ def validate_continue_key():
 
     return jsonify({
         'valid': True,
-        'level': valid_key['level'],
+        'level': player['currentLevel'],
         'score': player['currentScore'],
         'difficulty': player['difficulty'],
         'respawnsRemaining': FREE_RESPAWNS_PER_LEVEL
