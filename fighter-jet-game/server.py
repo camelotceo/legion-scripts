@@ -82,21 +82,38 @@ def cleanup_stale_players():
             del active_players[pid]
 
 
-def get_leaderboard_fallback():
-    """Read leaderboard from JSON file."""
+VALID_DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD', 'EXPERT']
+
+def get_all_leaderboards():
+    """Read all leaderboards from JSON file (organized by difficulty)."""
     if not LEADERBOARD_FILE.exists():
-        return []
+        return {"EASY": [], "MEDIUM": [], "HARD": [], "EXPERT": []}
     try:
         with open(LEADERBOARD_FILE, 'r') as f:
-            return json.load(f)
+            data = json.load(f)
+            # Handle legacy format (flat array) - migrate to new format
+            if isinstance(data, list):
+                return {"EASY": data, "MEDIUM": [], "HARD": [], "EXPERT": []}
+            # Handle old EXTREME key -> rename to EXPERT
+            if "EXTREME" in data and "EXPERT" not in data:
+                data["EXPERT"] = data.pop("EXTREME")
+            return data
     except (json.JSONDecodeError, IOError):
-        return []
+        return {"EASY": [], "MEDIUM": [], "HARD": [], "EXPERT": []}
 
 
-def save_leaderboard_fallback(leaderboard):
-    """Save leaderboard to JSON file."""
+def get_leaderboard_fallback(difficulty='EASY'):
+    """Read leaderboard for a specific difficulty."""
+    all_boards = get_all_leaderboards()
+    return all_boards.get(difficulty.upper(), [])
+
+
+def save_leaderboard_fallback(leaderboard, difficulty='EASY'):
+    """Save leaderboard for a specific difficulty."""
+    all_boards = get_all_leaderboards()
+    all_boards[difficulty.upper()] = leaderboard
     with open(LEADERBOARD_FILE, 'w') as f:
-        json.dump(leaderboard, f, indent=2)
+        json.dump(all_boards, f, indent=2)
 
 
 # === STATIC FILES ===
@@ -117,19 +134,24 @@ def serve_game():
 
 @app.route('/api/leaderboard', methods=['GET'])
 def get_scores():
-    """Get top scores."""
+    """Get top scores for a specific difficulty."""
+    difficulty = request.args.get('difficulty', 'EASY').upper()
+    if difficulty not in VALID_DIFFICULTIES:
+        difficulty = 'EASY'
+
     if USE_POSTGRES:
         try:
             scores = database.get_leaderboard(MAX_LEADERBOARD_SIZE)
-            # Convert datetime objects to strings
+            # Filter by difficulty and convert datetime objects
+            scores = [s for s in scores if s.get('difficulty', 'EASY').upper() == difficulty]
             for s in scores:
                 if s.get('date'):
                     s['date'] = s['date'].isoformat() if hasattr(s['date'], 'isoformat') else str(s['date'])
-            return jsonify(scores)
+            return jsonify(scores[:MAX_LEADERBOARD_SIZE])
         except Exception as e:
             print(f"Database error: {e}")
 
-    return jsonify(get_leaderboard_fallback())
+    return jsonify(get_leaderboard_fallback(difficulty))
 
 
 @app.route('/api/leaderboard', methods=['POST'])
@@ -170,12 +192,16 @@ def add_score():
             print(f"Database error saving score: {e}")
             # Fall through to JSON fallback
 
-    # Fallback: Use JSON storage
-    leaderboard = get_leaderboard_fallback()
+    # Fallback: Use JSON storage (organized by difficulty)
+    difficulty_upper = difficulty.upper()
+    if difficulty_upper not in VALID_DIFFICULTIES:
+        difficulty_upper = 'EASY'
+
+    leaderboard = get_leaderboard_fallback(difficulty_upper)
     leaderboard.append({
         'name': name,
         'score': score,
-        'difficulty': difficulty,
+        'difficulty': difficulty_upper,
         'level': level,
         'duration': duration,
         'date': datetime.now().isoformat()
@@ -184,7 +210,7 @@ def add_score():
     # Sort by score desc, then duration asc
     leaderboard.sort(key=lambda x: (-x['score'], x.get('duration', 9999)))
     leaderboard = leaderboard[:MAX_LEADERBOARD_SIZE]
-    save_leaderboard_fallback(leaderboard)
+    save_leaderboard_fallback(leaderboard, difficulty_upper)
 
     return jsonify({'success': True, 'leaderboard': leaderboard})
 

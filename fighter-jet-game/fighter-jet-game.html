@@ -718,9 +718,10 @@
         const MAX_LEADERBOARD_SIZE = 10;
         let cachedLeaderboard = [];
 
-        async function fetchLeaderboard() {
+        async function fetchLeaderboard(difficulty = null) {
             try {
-                const url = `${API_BASE}/api/leaderboard`;
+                const diff = difficulty || selectedDifficulty.toUpperCase();
+                const url = `${API_BASE}/api/leaderboard?difficulty=${diff}`;
                 const response = await fetch(url);
                 if (response.ok) {
                     const text = await response.text();
@@ -768,21 +769,37 @@
             return cachedLeaderboard;
         }
 
+        function formatDuration(seconds) {
+            if (!seconds || seconds <= 0) return '';
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            if (mins > 0) {
+                return `${mins}m${secs > 0 ? secs + 's' : ''}`;
+            }
+            return `${secs}s`;
+        }
+
         function renderLeaderboardFromCache(listElementId) {
             const listEl = document.getElementById(listElementId);
             if (!listEl) {
                 console.error('Leaderboard element not found:', listElementId);
                 return;
             }
+            // Update leaderboard title to show current difficulty
+            const titleEl = listEl.previousElementSibling;
+            if (titleEl && titleEl.tagName === 'H3') {
+                titleEl.innerHTML = `🏆 ${selectedDifficulty.toUpperCase()} High Scores`;
+            }
             if (!cachedLeaderboard || cachedLeaderboard.length === 0) {
                 listEl.innerHTML = '<li style="justify-content: center; color: #666;">No scores yet</li>';
                 return;
             }
-            // Show top 10
+            // Show top 10 with time
             const top10 = cachedLeaderboard.slice(0, 10);
-            listEl.innerHTML = top10.map((entry, i) =>
-                `<li><span class="rank">${i + 1}.</span><span class="name">${entry.name}</span><span class="score">${entry.score.toLocaleString()}</span></li>`
-            ).join('');
+            listEl.innerHTML = top10.map((entry, i) => {
+                const timeStr = entry.duration ? `<span class="time" style="color:#888;font-size:11px;margin-left:8px;">${formatDuration(entry.duration)}</span>` : '';
+                return `<li><span class="rank">${i + 1}.</span><span class="name">${entry.name}</span>${timeStr}<span class="score">${entry.score.toLocaleString()}</span></li>`;
+            }).join('');
         }
 
         async function renderLeaderboard(listElementId) {
@@ -1849,6 +1866,8 @@
             selectedDifficulty = diff;
             document.querySelectorAll('.diff-btn').forEach(btn => btn.classList.remove('selected'));
             document.querySelector('.diff-btn.' + diff).classList.add('selected');
+            // Refresh leaderboard for new difficulty
+            renderLeaderboard('startLeaderboardList');
         }
 
         // Modal functions
