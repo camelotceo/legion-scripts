@@ -132,6 +132,16 @@ def serve_game():
 
 # === LEADERBOARD API ===
 
+@app.route('/api/leaderboard/all', methods=['GET'])
+def get_all_scores():
+    """Get top scores for all difficulties."""
+    all_boards = get_all_leaderboards()
+    # Limit each to MAX_LEADERBOARD_SIZE
+    for diff in all_boards:
+        all_boards[diff] = all_boards[diff][:MAX_LEADERBOARD_SIZE]
+    return jsonify(all_boards)
+
+
 @app.route('/api/leaderboard', methods=['GET'])
 def get_scores():
     """Get top scores for a specific difficulty."""

@@ -204,9 +204,22 @@
         .leaderboard-list li:nth-child(1) { background: rgba(255, 215, 0, 0.2); color: #ffd700; }
         .leaderboard-list li:nth-child(2) { background: rgba(192, 192, 192, 0.2); color: #c0c0c0; }
         .leaderboard-list li:nth-child(3) { background: rgba(205, 127, 50, 0.2); color: #cd7f32; }
-        .leaderboard-list .rank { width: 25px; font-weight: bold; }
-        .leaderboard-list .name { flex: 1; text-align: left; margin-left: 10px; }
+        .leaderboard-list .rank { width: 20px; font-weight: bold; }
+        .leaderboard-list .name { flex: 1; text-align: left; margin-left: 5px; }
         .leaderboard-list .score { font-weight: bold; }
+        /* Multi-column leaderboard grid */
+        .leaderboard-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 15px 0; }
+        .leaderboard-column { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px; min-width: 0; }
+        .leaderboard-column h4 { color: #fff; font-size: 11px; margin: 0 0 8px 0; text-align: center; padding: 4px; border-radius: 4px; }
+        .leaderboard-column h4.easy { background: #4ade80; color: #000; }
+        .leaderboard-column h4.medium { background: #facc15; color: #000; }
+        .leaderboard-column h4.hard { background: #f97316; color: #000; }
+        .leaderboard-column h4.expert { background: #ef4444; color: #fff; }
+        .leaderboard-column .leaderboard-list li { padding: 3px 6px; font-size: 10px; }
+        .leaderboard-column .leaderboard-list .rank { width: 16px; }
+        .leaderboard-column .leaderboard-list .name { margin-left: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .leaderboard-column .leaderboard-list .time { display: none; }
+        @media (max-width: 700px) { .leaderboard-grid { grid-template-columns: repeat(2, 1fr); } }
                 #bossHealthContainer {
             position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
             width: 300px; display: none; flex-direction: column; align-items: center;
@@ -549,9 +562,26 @@
                 <button class="btn" onclick="openSetupModal()">Play Game</button>
                 <button class="btn-secondary" onclick="openInstructionsModal()">How to Play</button>
             </div>
-            <div class="leaderboard" id="startLeaderboard">
-                <h3>🏆 High Scores</h3>
-                <ul class="leaderboard-list" id="startLeaderboardList"></ul>
+            <div id="startLeaderboard">
+                <h3 style="color: #ffd700; margin-bottom: 10px; font-size: 16px;">🏆 High Scores</h3>
+                <div class="leaderboard-grid" id="leaderboardGrid">
+                    <div class="leaderboard-column">
+                        <h4 class="easy">EASY</h4>
+                        <ul class="leaderboard-list" id="leaderboardEasy"></ul>
+                    </div>
+                    <div class="leaderboard-column">
+                        <h4 class="medium">MEDIUM</h4>
+                        <ul class="leaderboard-list" id="leaderboardMedium"></ul>
+                    </div>
+                    <div class="leaderboard-column">
+                        <h4 class="hard">HARD</h4>
+                        <ul class="leaderboard-list" id="leaderboardHard"></ul>
+                    </div>
+                    <div class="leaderboard-column">
+                        <h4 class="expert">EXPERT</h4>
+                        <ul class="leaderboard-list" id="leaderboardExpert"></ul>
+                    </div>
+                </div>
             </div>
         </div>
         <!-- Setup Modal -->
@@ -619,9 +649,26 @@
             <h1>Score: <span id="finalScore">0</span></h1>
             <p style="color: #aaa; margin-bottom: 10px;">Level <span id="finalLevel">1</span> | <span id="finalDifficulty">EASY</span></p>
             <p id="scoreSavedMsg" style="color: #4ade80; margin-bottom: 10px; display: none;"></p>
-            <div class="leaderboard" id="gameOverLeaderboard">
-                <h3>🏆 High Scores</h3>
-                <ul class="leaderboard-list" id="gameOverLeaderboardList"></ul>
+            <div id="gameOverLeaderboard">
+                <h3 style="color: #ffd700; margin-bottom: 10px; font-size: 16px;">🏆 High Scores</h3>
+                <div class="leaderboard-grid" id="gameOverLeaderboardGrid">
+                    <div class="leaderboard-column">
+                        <h4 class="easy">EASY</h4>
+                        <ul class="leaderboard-list" id="gameOverLeaderboardEasy"></ul>
+                    </div>
+                    <div class="leaderboard-column">
+                        <h4 class="medium">MEDIUM</h4>
+                        <ul class="leaderboard-list" id="gameOverLeaderboardMedium"></ul>
+                    </div>
+                    <div class="leaderboard-column">
+                        <h4 class="hard">HARD</h4>
+                        <ul class="leaderboard-list" id="gameOverLeaderboardHard"></ul>
+                    </div>
+                    <div class="leaderboard-column">
+                        <h4 class="expert">EXPERT</h4>
+                        <ul class="leaderboard-list" id="gameOverLeaderboardExpert"></ul>
+                    </div>
+                </div>
             </div>
             <button class="btn" onclick="startGame()">Play Again</button>
             <button class="btn" style="background: #555;" onclick="backToMenu()">Menu</button>
@@ -717,6 +764,20 @@
         const API_BASE = window.location.origin;
         const MAX_LEADERBOARD_SIZE = 10;
         let cachedLeaderboard = [];
+        let allLeaderboards = { EASY: [], MEDIUM: [], HARD: [], EXPERT: [] };
+
+        async function fetchAllLeaderboards() {
+            try {
+                const url = `${API_BASE}/api/leaderboard/all`;
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data = await response.json();
+                    allLeaderboards = data;
+                    return allLeaderboards;
+                }
+            } catch (e) { console.error('Failed to fetch all leaderboards:', e); }
+            return allLeaderboards;
+        }
 
         async function fetchLeaderboard(difficulty = null) {
             try {
@@ -740,8 +801,9 @@
         }
 
         function isHighScore(newScore) {
-            if (cachedLeaderboard.length < MAX_LEADERBOARD_SIZE) return true;
-            return newScore > cachedLeaderboard[cachedLeaderboard.length - 1].score;
+            const currentDiffScores = allLeaderboards[selectedDifficulty.toUpperCase()] || [];
+            if (currentDiffScores.length < MAX_LEADERBOARD_SIZE) return true;
+            return newScore > currentDiffScores[currentDiffScores.length - 1].score;
         }
 
         async function addHighScore(name, newScore, difficulty, lvl, duration = 0) {
@@ -757,10 +819,15 @@
                     try {
                         const data = JSON.parse(text);
                         cachedLeaderboard = data.leaderboard || [];
+                        // Update allLeaderboards for this difficulty
+                        allLeaderboards[difficulty.toUpperCase()] = cachedLeaderboard;
                         console.log('Score saved successfully:', cachedLeaderboard);
                     } catch (parseErr) {
                         console.error('Failed to parse save response:', text.substring(0, 100));
                     }
+                    // Refresh all leaderboards display
+                    await fetchAllLeaderboards();
+                    renderAllLeaderboards();
                     return cachedLeaderboard;
                 } else {
                     console.error('Save score failed:', response.status, response.statusText);
@@ -779,22 +846,43 @@
             return `${secs}s`;
         }
 
+        function renderLeaderboardColumn(scores, listElementId) {
+            const listEl = document.getElementById(listElementId);
+            if (!listEl) return;
+            if (!scores || scores.length === 0) {
+                listEl.innerHTML = '<li style="justify-content: center; color: #666; font-size: 9px;">No scores</li>';
+                return;
+            }
+            const top5 = scores.slice(0, 5);
+            listEl.innerHTML = top5.map((entry, i) => {
+                const timeStr = entry.duration ? `<span class="time" style="color:#888;font-size:9px;margin-left:4px;">${formatDuration(entry.duration)}</span>` : '';
+                return `<li><span class="rank">${i + 1}.</span><span class="name">${entry.name}</span>${timeStr}<span class="score">${entry.score.toLocaleString()}</span></li>`;
+            }).join('');
+        }
+
+        function renderAllLeaderboards() {
+            // Start screen leaderboards
+            renderLeaderboardColumn(allLeaderboards.EASY, 'leaderboardEasy');
+            renderLeaderboardColumn(allLeaderboards.MEDIUM, 'leaderboardMedium');
+            renderLeaderboardColumn(allLeaderboards.HARD, 'leaderboardHard');
+            renderLeaderboardColumn(allLeaderboards.EXPERT, 'leaderboardExpert');
+            // Game over screen leaderboards
+            renderLeaderboardColumn(allLeaderboards.EASY, 'gameOverLeaderboardEasy');
+            renderLeaderboardColumn(allLeaderboards.MEDIUM, 'gameOverLeaderboardMedium');
+            renderLeaderboardColumn(allLeaderboards.HARD, 'gameOverLeaderboardHard');
+            renderLeaderboardColumn(allLeaderboards.EXPERT, 'gameOverLeaderboardExpert');
+        }
+
         function renderLeaderboardFromCache(listElementId) {
             const listEl = document.getElementById(listElementId);
             if (!listEl) {
                 console.error('Leaderboard element not found:', listElementId);
                 return;
             }
-            // Update leaderboard title to show current difficulty
-            const titleEl = listEl.previousElementSibling;
-            if (titleEl && titleEl.tagName === 'H3') {
-                titleEl.innerHTML = `🏆 ${selectedDifficulty.toUpperCase()} High Scores`;
-            }
             if (!cachedLeaderboard || cachedLeaderboard.length === 0) {
                 listEl.innerHTML = '<li style="justify-content: center; color: #666;">No scores yet</li>';
                 return;
             }
-            // Show top 10 with time
             const top10 = cachedLeaderboard.slice(0, 10);
             listEl.innerHTML = top10.map((entry, i) => {
                 const timeStr = entry.duration ? `<span class="time" style="color:#888;font-size:11px;margin-left:8px;">${formatDuration(entry.duration)}</span>` : '';
@@ -803,8 +891,8 @@
         }
 
         async function renderLeaderboard(listElementId) {
-            await fetchLeaderboard();
-            renderLeaderboardFromCache(listElementId);
+            await fetchAllLeaderboards();
+            renderAllLeaderboards();
         }
 
         // === LIVE PLAYERS SYSTEM ===
@@ -1866,8 +1954,6 @@
             selectedDifficulty = diff;
             document.querySelectorAll('.diff-btn').forEach(btn => btn.classList.remove('selected'));
             document.querySelector('.diff-btn.' + diff).classList.add('selected');
-            // Refresh leaderboard for new difficulty
-            renderLeaderboard('startLeaderboardList');
         }
 
         // Modal functions
@@ -4127,8 +4213,7 @@
             } else {
                 scoreSavedMsg.style.display = 'none';
             }
-            renderLeaderboardFromCache('gameOverLeaderboardList');
-            renderLeaderboardFromCache('startLeaderboardList');
+            renderAllLeaderboards();
 
             document.getElementById('gameOverScreen').classList.remove('hidden');
             playGameOver();
