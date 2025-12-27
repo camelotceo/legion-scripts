@@ -914,42 +914,58 @@ def request_continue_key():
 
 @app.route('/api/player/validate-key', methods=['POST'])
 def validate_continue_key():
-    """Validate a continue key and return player progress."""
+    """Validate a continue key and return player progress.
+
+    Key can be validated with just the key (searches all players) or with name+key.
+    """
     data = request.get_json() or {}
-    name = str(data.get('name', '')).strip()[:12].lower()
+    name = str(data.get('name', '')).strip()[:12].lower() if data.get('name') else None
     key = str(data.get('key', '')).strip().upper()
 
-    if not name or not key:
-        return jsonify({'error': 'Name and key required'}), 400
+    if not key:
+        return jsonify({'error': 'Key required'}), 400
 
     progress = load_player_progress()
 
-    if name not in progress:
-        return jsonify({'valid': False, 'error': 'Player not found'}), 404
-
-    player = progress[name]
-
-    # Check if key is valid
+    # If name provided, look up that specific player
+    # Otherwise search all players for the key
+    player = None
+    player_name = None
     valid_key = None
-    for k in player['keys']:
-        if k['key'] == key:
-            valid_key = k
-            break
 
-    if not valid_key:
+    if name and name in progress:
+        player = progress[name]
+        player_name = name
+        for k in player['keys']:
+            if k['key'] == key:
+                valid_key = k
+                break
+    else:
+        # Search all players for this key
+        for pname, pdata in progress.items():
+            for k in pdata.get('keys', []):
+                if k['key'] == key:
+                    player = pdata
+                    player_name = pname
+                    valid_key = k
+                    break
+            if valid_key:
+                break
+
+    if not valid_key or not player:
         return jsonify({'valid': False, 'error': 'Invalid key'}), 401
 
     # Mark key as used
     valid_key['used'] = True
     valid_key['usedAt'] = datetime.now().isoformat()
 
-    # Reset respawns for the key's level
-    player['respawnsUsed'][str(valid_key['level'])] = 0
+    # Reset respawns for the current level
+    player['respawnsUsed'][str(player['currentLevel'])] = 0
 
     player['history'].append({
         'action': 'key_validated',
         'key': key,
-        'level': valid_key['level'],
+        'level': player['currentLevel'],
         'timestamp': datetime.now().isoformat()
     })
 
@@ -957,6 +973,7 @@ def validate_continue_key():
 
     return jsonify({
         'valid': True,
+        'name': player_name,
         'level': player['currentLevel'],
         'score': player['currentScore'],
         'difficulty': player['difficulty'],
