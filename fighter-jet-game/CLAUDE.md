@@ -27,7 +27,27 @@
 4. **For HTML-only changes (no rebuild needed):**
    The `fighter-jet-game.html` file is volume mounted, so changes take effect immediately after `git pull`.
 
+### Environment Variables Setup (First-time or when adding new secrets)
+
+**IMPORTANT: Never commit API keys to git!** All secrets are stored in `.env` on the server.
+
+1. **Create/update .env file on server:**
+   ```bash
+   ssh felican.ai "cat > /home/dev/legion-scripts/fighter-jet-game/.env << 'EOF'
+   B2_BUCKET=fighter-game-backup
+   B2_KEY_ID=<your_b2_key_id>
+   B2_APP_KEY=<your_b2_app_key>
+   RESEND_API_KEY=<your_resend_api_key>
+   EOF"
+   ```
+
+2. **Restart containers to pick up new env vars:**
+   ```bash
+   ssh felican.ai "cd /home/dev/legion-scripts/fighter-jet-game && docker compose up -d"
+   ```
+
 ### Important Notes
+- **Never commit .env or API keys to git** - use `.env.example` as reference
 - Use `docker compose` (with space) on server, NOT `docker-compose`
 - HTML file is volume mounted at `./fighter-jet-game.html:/app/fighter-jet-game.html:ro`
 - Data persists in `./data` directory (volume mounted)
