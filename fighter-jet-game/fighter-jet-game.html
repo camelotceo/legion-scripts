@@ -1772,9 +1772,9 @@
         // === DIFFICULTY SETTINGS (2x speed) ===
         const DIFFICULTIES = {
             easy: { name: 'EASY', speedMult: 1.6, spawnMult: 1.0, enemyFireMult: 1.4, lives: 5, color: '#4ade80' },
-            medium: { name: 'MEDIUM', speedMult: 2.0, spawnMult: 0.7, enemyFireMult: 2.0, lives: 3, color: '#facc15' },
-            hard: { name: 'HARD', speedMult: 2.6, spawnMult: 0.5, enemyFireMult: 3.0, lives: 2, color: '#f97316' },
-            expert: { name: 'EXPERT', speedMult: 3.2, spawnMult: 0.35, enemyFireMult: 4.0, lives: 1, color: '#ef4444' }
+            medium: { name: 'MEDIUM', speedMult: 2.0, spawnMult: 0.7, enemyFireMult: 2.0, lives: 5, color: '#facc15' },
+            hard: { name: 'HARD', speedMult: 2.6, spawnMult: 0.5, enemyFireMult: 3.0, lives: 5, color: '#f97316' },
+            expert: { name: 'EXPERT', speedMult: 3.2, spawnMult: 0.35, enemyFireMult: 4.0, lives: 5, color: '#ef4444' }
         };
         let selectedDifficulty = 'easy';
 
@@ -3735,6 +3735,23 @@
                     enemyShoot(e);
                     e.shootTimer = fireRate / diff.enemyFireMult + Math.random() * 0.5;
                 }
+            });
+            // Enemy-wall collision: enemies explode when hitting walls
+            enemies = enemies.filter(e => {
+                for (const wall of walls) {
+                    const eLeft = e.x - e.width / 2;
+                    const eRight = e.x + e.width / 2;
+                    const eTop = e.y - e.height / 2;
+                    const eBottom = e.y + e.height / 2;
+                    if (eRight > wall.x && eLeft < wall.x + wall.width &&
+                        eBottom > wall.y && eTop < wall.y + wall.height) {
+                        // Enemy hit wall - explode!
+                        createExplosion(e.x, e.y, '#ff6600', 25);
+                        playExplosion();
+                        return false;
+                    }
+                }
+                return true;
             });
             enemies = enemies.filter(e => e.y < logicalHeight + 50);
 
