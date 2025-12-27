@@ -467,6 +467,26 @@
             background: #555; color: #fff; border: none; border-radius: 20px; cursor: pointer;
         }
         .close-modal:hover { background: #666; }
+        /* Respawn Modal */
+        #respawnModal .modal { max-width: 420px; text-align: center; }
+        #respawnModal h2 { color: #ffd700; margin-bottom: 10px; }
+        #respawnModal .respawn-info { color: #aaa; font-size: 14px; margin: 10px 0; }
+        #respawnModal .respawn-level { color: #4ade80; font-size: 20px; font-weight: bold; }
+        #respawnModal .respawn-lives { display: flex; justify-content: center; gap: 5px; margin: 15px 0; }
+        #respawnModal .respawn-lives .life { width: 20px; height: 20px; background: #4ade80; border-radius: 50%; }
+        #respawnModal .respawn-lives .life.used { background: #333; }
+        #respawnModal .email-section { margin: 20px 0; }
+        #respawnModal .email-input { width: 100%; padding: 12px; font-size: 14px; border: 2px solid #444; background: #2a2a4e; color: #fff; border-radius: 8px; margin: 10px 0; }
+        #respawnModal .email-input:focus { border-color: #4ade80; outline: none; }
+        #respawnModal .key-display { background: #1a3a1a; border: 2px solid #4ade80; padding: 15px; border-radius: 10px; margin: 15px 0; }
+        #respawnModal .key-code { font-size: 28px; font-weight: bold; letter-spacing: 3px; color: #4ade80; font-family: monospace; }
+        #respawnModal .key-input { width: 100%; padding: 12px; font-size: 18px; text-align: center; border: 2px solid #444; background: #2a2a4e; color: #4ade80; border-radius: 8px; margin: 10px 0; font-family: monospace; letter-spacing: 2px; }
+        #respawnModal .btn-respawn { padding: 12px 30px; font-size: 16px; background: linear-gradient(135deg, #4ade80, #22c55e); color: #000; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; margin: 5px; }
+        #respawnModal .btn-respawn:hover { transform: scale(1.05); }
+        #respawnModal .btn-respawn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        #respawnModal .btn-quit { padding: 10px 20px; font-size: 14px; background: #555; color: #fff; border: none; border-radius: 20px; cursor: pointer; margin: 5px; }
+        #respawnModal .status-msg { color: #888; font-size: 12px; margin-top: 10px; }
+        #respawnModal .error-msg { color: #ff6b6b; font-size: 12px; margin-top: 10px; }
         /* Start screen buttons */
         .start-buttons { display: flex; gap: 10px; margin: 15px 0; }
         .btn-secondary {
@@ -590,7 +610,13 @@
                 <h2>Game Setup</h2>
                 <div class="modal-section">
                     <label>Your Name (or leave blank for random)</label>
-                    <input type="text" id="playerNameInput" maxlength="12" placeholder="Enter name...">
+                    <input type="text" id="playerNameInput" maxlength="12" placeholder="Enter name..." oninput="checkPlayerName()">
+                    <div id="nameCheckResult" style="display: none; margin-top: 8px; padding: 10px; border-radius: 6px; font-size: 12px;"></div>
+                </div>
+                <div id="returningPlayerKeySection" class="modal-section" style="display: none;">
+                    <label>Enter Your Continue Key</label>
+                    <input type="text" id="setupKeyInput" maxlength="9" placeholder="FJ-XXXXXX" style="text-transform: uppercase; font-family: monospace; letter-spacing: 2px;">
+                    <p id="setupKeyError" style="color: #ff6b6b; font-size: 11px; margin-top: 5px; display: none;"></p>
                 </div>
                 <div class="modal-section">
                     <label>Choose Your Jet</label>
@@ -642,6 +668,58 @@
                     <p style="margin-top: 12px; color: #ffd700;">Defeat 6 bosses to win the game!</p>
                 </div>
                 <button class="close-modal" onclick="closeInstructionsModal()">Got it!</button>
+            </div>
+        </div>
+        <!-- Respawn Modal -->
+        <div id="respawnModal" class="modal-overlay">
+            <div class="modal">
+                <h2>💀 You Died!</h2>
+                <p class="respawn-level">Level <span id="respawnLevel">1</span></p>
+                <p class="respawn-info">Score: <span id="respawnScore">0</span></p>
+                <div class="respawn-lives" id="respawnLives">
+                    <!-- Lives indicators will be added dynamically -->
+                </div>
+                <p class="respawn-info" id="respawnMessage">Respawning...</p>
+
+                <!-- Free respawn section -->
+                <div id="freeRespawnSection">
+                    <button class="btn-respawn" onclick="doRespawn()">Continue (Free)</button>
+                    <p class="status-msg"><span id="respawnsRemaining">3</span> free respawns remaining</p>
+                </div>
+
+                <!-- Email required section (hidden initially) -->
+                <div id="emailSection" style="display: none;">
+                    <p class="respawn-info">You've used all free respawns for this level.</p>
+                    <p class="respawn-info">Enter your email to receive a continue key:</p>
+                    <div class="email-section">
+                        <input type="email" class="email-input" id="respawnEmail" placeholder="your@email.com">
+                        <button class="btn-respawn" id="sendKeyBtn" onclick="requestContinueKey()">Send Key</button>
+                    </div>
+                    <p id="emailError" class="error-msg" style="display: none;"></p>
+                </div>
+
+                <!-- Key received section (hidden initially) -->
+                <div id="keyReceivedSection" style="display: none;">
+                    <p class="respawn-info">Key sent! Check your email.</p>
+                    <div class="key-display">
+                        <p style="color: #aaa; margin-bottom: 5px;">Your Continue Key:</p>
+                        <span class="key-code" id="displayedKey">FJ-XXXXXX</span>
+                    </div>
+                    <input type="text" class="key-input" id="continueKeyInput" placeholder="FJ-XXXXXX" maxlength="9">
+                    <button class="btn-respawn" onclick="validateAndContinue()">Continue</button>
+                </div>
+
+                <!-- Returning player section (hidden initially) -->
+                <div id="returningPlayerSection" style="display: none;">
+                    <p class="respawn-info">Welcome back! Enter your key to continue:</p>
+                    <input type="text" class="key-input" id="returningKeyInput" placeholder="FJ-XXXXXX" maxlength="9">
+                    <button class="btn-respawn" onclick="validateReturningPlayer()">Resume Game</button>
+                    <p id="keyError" class="error-msg" style="display: none;"></p>
+                </div>
+
+                <div style="margin-top: 15px;">
+                    <button class="btn-quit" onclick="quitFromRespawn()">Quit to Menu</button>
+                </div>
             </div>
         </div>
         <div id="gameOverScreen" class="hidden">
@@ -1790,6 +1868,13 @@
         let isInvincible = false; // Debug mode for unlimited lives
         let totalEnemiesKilled = 0; // Track for ending stats
 
+        // === RESPAWN SYSTEM ===
+        const FREE_RESPAWNS_PER_LEVEL = 3;
+        let respawnsUsedThisLevel = 0;
+        let playerHasKey = false;
+        let currentContinueKey = null;
+        let savedLevelScore = 0; // Score at start of current level
+
         // === LEVEL SPEED MULTIPLIERS ===
         const levelSpeeds = { 1: 1.0, 2: 1.2, 3: 1.4, 4: 1.6, 5: 1.8, 6: 2.2 };
 
@@ -1958,6 +2043,13 @@
 
         // Modal functions
         function openSetupModal() {
+            // Reset returning player state
+            isReturningPlayer = false;
+            returningPlayerProgress = null;
+            document.getElementById('nameCheckResult').style.display = 'none';
+            document.getElementById('returningPlayerKeySection').style.display = 'none';
+            document.getElementById('setupKeyInput').value = '';
+            document.getElementById('setupKeyError').style.display = 'none';
             document.getElementById('setupModal').classList.add('show');
         }
 
@@ -1971,6 +2063,337 @@
 
         function closeInstructionsModal() {
             document.getElementById('instructionsModal').classList.remove('show');
+        }
+
+        // === RESPAWN MODAL FUNCTIONS ===
+        function showRespawnModal() {
+            // Update display
+            document.getElementById('respawnLevel').textContent = level;
+            document.getElementById('respawnScore').textContent = score.toLocaleString();
+
+            // Update lives indicators
+            const livesContainer = document.getElementById('respawnLives');
+            let livesHtml = '';
+            for (let i = 0; i < FREE_RESPAWNS_PER_LEVEL; i++) {
+                const used = i < respawnsUsedThisLevel;
+                livesHtml += `<div class="life ${used ? 'used' : ''}"></div>`;
+            }
+            livesContainer.innerHTML = livesHtml;
+
+            const remaining = FREE_RESPAWNS_PER_LEVEL - respawnsUsedThisLevel;
+            document.getElementById('respawnsRemaining').textContent = remaining;
+
+            // Show appropriate section
+            document.getElementById('freeRespawnSection').style.display = remaining > 0 ? 'block' : 'none';
+            document.getElementById('emailSection').style.display = remaining <= 0 ? 'block' : 'none';
+            document.getElementById('keyReceivedSection').style.display = 'none';
+            document.getElementById('returningPlayerSection').style.display = 'none';
+            document.getElementById('emailError').style.display = 'none';
+
+            if (remaining > 0) {
+                document.getElementById('respawnMessage').textContent = `${remaining} free respawns remaining for Level ${level}`;
+            } else {
+                document.getElementById('respawnMessage').textContent = 'No free respawns left. Enter email for continue key.';
+            }
+
+            document.getElementById('respawnModal').classList.add('show');
+        }
+
+        function hideRespawnModal() {
+            document.getElementById('respawnModal').classList.remove('show');
+        }
+
+        async function doRespawn() {
+            respawnsUsedThisLevel++;
+
+            // Save progress to server
+            try {
+                await fetch(`${API_BASE}/api/player/save-progress`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: myPlayerName,
+                        level: level,
+                        score: score,
+                        difficulty: selectedDifficulty.toUpperCase(),
+                        respawnsUsed: respawnsUsedThisLevel
+                    })
+                });
+            } catch (e) { console.error('Failed to save progress:', e); }
+
+            // Respawn player
+            hideRespawnModal();
+            respawnPlayer();
+        }
+
+        function respawnPlayer() {
+            // Reset player position
+            player.x = logicalWidth / 2;
+            player.y = logicalHeight - 80;
+
+            // Reset lives
+            const diff = getDiffSettings();
+            lives = diff.lives;
+
+            // Clear hazards but keep score and level
+            bullets = [];
+            enemies = [];
+            mines = [];
+            walls = [];
+
+            // Reset weapon to pistol
+            currentWeapon = 'pistol';
+            laserActive = false;
+            deactivateShield();
+            ghostActive = false;
+
+            // Update display
+            document.getElementById('lives').textContent = lives;
+
+            // Resume game
+            gameRunning = true;
+            gamePaused = false;
+            lastFrameTime = performance.now();
+            startBackgroundMusic(bossActive);
+
+            // Report respawn action
+            reportAction('respawned');
+        }
+
+        async function requestContinueKey() {
+            const email = document.getElementById('respawnEmail').value.trim();
+            if (!email || !email.includes('@')) {
+                document.getElementById('emailError').textContent = 'Please enter a valid email';
+                document.getElementById('emailError').style.display = 'block';
+                return;
+            }
+
+            document.getElementById('sendKeyBtn').disabled = true;
+            document.getElementById('sendKeyBtn').textContent = 'Sending...';
+            document.getElementById('emailError').style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/player/request-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: myPlayerName,
+                        email: email,
+                        level: level,
+                        score: score,
+                        difficulty: selectedDifficulty.toUpperCase()
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentContinueKey = data.key;
+                    document.getElementById('displayedKey').textContent = data.key;
+                    document.getElementById('continueKeyInput').value = data.key;
+
+                    // Show key received section
+                    document.getElementById('emailSection').style.display = 'none';
+                    document.getElementById('keyReceivedSection').style.display = 'block';
+                    document.getElementById('respawnMessage').textContent = 'Key sent! You have 3 more respawns.';
+                } else {
+                    document.getElementById('emailError').textContent = data.error || 'Failed to send key';
+                    document.getElementById('emailError').style.display = 'block';
+                }
+            } catch (e) {
+                document.getElementById('emailError').textContent = 'Network error. Please try again.';
+                document.getElementById('emailError').style.display = 'block';
+            }
+
+            document.getElementById('sendKeyBtn').disabled = false;
+            document.getElementById('sendKeyBtn').textContent = 'Send Key';
+        }
+
+        async function validateAndContinue() {
+            const key = document.getElementById('continueKeyInput').value.trim().toUpperCase();
+            if (!key) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/player/validate-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: myPlayerName, key: key })
+                });
+
+                const data = await response.json();
+
+                if (data.valid) {
+                    // Reset respawns for this level
+                    respawnsUsedThisLevel = 0;
+                    playerHasKey = true;
+
+                    // Respawn
+                    hideRespawnModal();
+                    respawnPlayer();
+                } else {
+                    alert('Invalid key. Please check and try again.');
+                }
+            } catch (e) {
+                alert('Network error. Please try again.');
+            }
+        }
+
+        async function validateReturningPlayer() {
+            const key = document.getElementById('returningKeyInput').value.trim().toUpperCase();
+            if (!key) {
+                document.getElementById('keyError').textContent = 'Please enter your key';
+                document.getElementById('keyError').style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/player/validate-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: myPlayerName, key: key })
+                });
+
+                const data = await response.json();
+
+                if (data.valid) {
+                    // Restore progress
+                    level = data.level;
+                    score = data.score;
+                    respawnsUsedThisLevel = 0;
+                    playerHasKey = true;
+
+                    // Update UI
+                    document.getElementById('score').textContent = score;
+                    document.getElementById('levelDisplay').textContent = `Level ${level}`;
+
+                    // Start game
+                    hideRespawnModal();
+                    respawnPlayer();
+                } else {
+                    document.getElementById('keyError').textContent = data.error || 'Invalid key';
+                    document.getElementById('keyError').style.display = 'block';
+                }
+            } catch (e) {
+                document.getElementById('keyError').textContent = 'Network error. Please try again.';
+                document.getElementById('keyError').style.display = 'block';
+            }
+        }
+
+        function handlePlayerDeath(deathReason = 'unknown') {
+            // Pause the game but don't end it yet
+            gameRunning = false;
+            gamePaused = true;
+            lastDeathReason = deathReason;
+            stopBackgroundMusic();
+            stopBossMusic();
+
+            // Show the respawn modal
+            showRespawnModal();
+        }
+
+        function quitFromRespawn() {
+            hideRespawnModal();
+            // Now actually end the game
+            gameOver(lastDeathReason);
+        }
+
+        // === RETURNING PLAYER CHECK ===
+        let nameCheckTimeout = null;
+        let isReturningPlayer = false;
+        let returningPlayerProgress = null;
+
+        async function checkPlayerName() {
+            const name = document.getElementById('playerNameInput').value.trim();
+            const resultDiv = document.getElementById('nameCheckResult');
+            const keySection = document.getElementById('returningPlayerKeySection');
+
+            // Clear previous timeout
+            if (nameCheckTimeout) clearTimeout(nameCheckTimeout);
+
+            // Reset if empty name
+            if (!name || name.length < 2) {
+                resultDiv.style.display = 'none';
+                keySection.style.display = 'none';
+                isReturningPlayer = false;
+                returningPlayerProgress = null;
+                return;
+            }
+
+            // Debounce - wait 500ms after user stops typing
+            nameCheckTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/player/check-name`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: name })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.available) {
+                        // New player - name is available
+                        resultDiv.style.display = 'block';
+                        resultDiv.style.background = '#1a3a1a';
+                        resultDiv.style.color = '#4ade80';
+                        resultDiv.textContent = '✓ Name available!';
+                        keySection.style.display = 'none';
+                        isReturningPlayer = false;
+                        returningPlayerProgress = null;
+                    } else if (data.hasKey) {
+                        // Returning player - needs key
+                        resultDiv.style.display = 'block';
+                        resultDiv.style.background = '#3a2a1a';
+                        resultDiv.style.color = '#ffd700';
+                        resultDiv.innerHTML = `Welcome back! Level ${data.savedLevel} | ${data.savedScore.toLocaleString()} points<br><span style="font-size: 11px; color: #aaa;">Enter your continue key to resume</span>`;
+                        keySection.style.display = 'block';
+                        isReturningPlayer = true;
+                        returningPlayerProgress = {
+                            level: data.savedLevel,
+                            score: data.savedScore,
+                            difficulty: data.savedDifficulty
+                        };
+                    }
+                } catch (e) {
+                    console.error('Failed to check name:', e);
+                    resultDiv.style.display = 'none';
+                    keySection.style.display = 'none';
+                }
+            }, 500);
+        }
+
+        async function validateSetupKey() {
+            const name = document.getElementById('playerNameInput').value.trim();
+            const key = document.getElementById('setupKeyInput').value.trim().toUpperCase();
+            const errorEl = document.getElementById('setupKeyError');
+
+            if (!key) {
+                errorEl.textContent = 'Please enter your key';
+                errorEl.style.display = 'block';
+                return false;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/player/validate-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, key: key })
+                });
+
+                const data = await response.json();
+
+                if (data.valid) {
+                    errorEl.style.display = 'none';
+                    return true;
+                } else {
+                    errorEl.textContent = 'Invalid key. Please check and try again.';
+                    errorEl.style.display = 'block';
+                    return false;
+                }
+            } catch (e) {
+                errorEl.textContent = 'Network error. Please try again.';
+                errorEl.style.display = 'block';
+                return false;
+            }
         }
 
         const player = {
@@ -2858,6 +3281,9 @@
                 if (level > 6) level = 6;
                 document.getElementById('levelDisplay').textContent = level <= 5 ? 'Level ' + level : 'FINAL LEVEL';
 
+                // Reset respawns for new level
+                respawnsUsedThisLevel = 0;
+
                 // Report level up action
                 reportAction('level_up', { newLevel: level });
 
@@ -3150,15 +3576,18 @@
         }
 
         function updateBackground(dt) {
+            // Background speed scales with difficulty (faster = feels like moving faster)
+            const bgSpeedMult = getDiffSettings().speedMult * 0.7; // Scale background speed
+
             // Update stars
             stars.forEach(s => {
-                s.y += s.speed * dt;
+                s.y += s.speed * bgSpeedMult * dt;
                 if (s.y > logicalHeight) { s.y = -5; s.x = Math.random() * logicalWidth; }
             });
 
             // Update nebulae
             nebulae.forEach(n => {
-                n.y += n.speed * dt;
+                n.y += n.speed * bgSpeedMult * dt;
                 if (n.y > logicalHeight + 100) {
                     n.y = -n.height - 100;
                     n.x = Math.random() * logicalWidth;
@@ -3168,7 +3597,7 @@
 
             // Update space objects
             spaceObjects.forEach(obj => {
-                obj.y += obj.speed * dt;
+                obj.y += obj.speed * bgSpeedMult * dt;
                 obj.rotation += obj.rotSpeed * dt;
             });
             spaceObjects = spaceObjects.filter(obj => obj.y < logicalHeight + 200);
@@ -3659,6 +4088,7 @@
                     // Boss already defeated, advance level
                     level++;
                     document.getElementById('levelDisplay').textContent = level <= 5 ? 'Level ' + level : 'FINAL LEVEL';
+                    respawnsUsedThisLevel = 0; // Reset respawns for new level
                     playLevelUp();
                     createExplosion(logicalWidth / 2, logicalHeight / 2, '#ffd700', 40);
                 }
@@ -3817,7 +4247,7 @@
                             if (lives <= 0) {
                                 const deathReason = bullet.type === 'boss' ? 'killed_by_boss' : 'killed_by_drone';
                                 reportAction(deathReason);
-                                gameOver(deathReason);
+                                handlePlayerDeath(deathReason);
                             }
                         }
                     }
@@ -3895,7 +4325,7 @@
                             playExplosion();
                             if (lives <= 0) {
                                 reportAction('killed_by_drone');
-                                gameOver('killed_by_drone');
+                                handlePlayerDeath('killed_by_drone');
                             }
                         }
                     }
@@ -3916,7 +4346,7 @@
                             playExplosion();
                             if (lives <= 0) {
                                 reportAction('crashed_wall');
-                                gameOver('crashed_wall');
+                                handlePlayerDeath('crashed_wall');
                             }
                         }
                         player.y = wall.y + wall.height + 30;
@@ -4006,7 +4436,7 @@
                             createExplosion(player.x, player.y, jetColors[selectedColor].body);
                             if (lives <= 0) {
                                 reportAction('hit_bomb');
-                                gameOver('hit_bomb');
+                                handlePlayerDeath('hit_bomb');
                             }
                         }
                     }
@@ -4109,14 +4539,45 @@
 
         async function startGame() {
             if (audioContext.state === 'suspended') await audioContext.resume();
+
+            // Handle returning player validation
+            if (isReturningPlayer && returningPlayerProgress) {
+                const valid = await validateSetupKey();
+                if (!valid) {
+                    return; // Don't start if key validation failed
+                }
+                // Set difficulty from saved progress
+                const savedDiff = returningPlayerProgress.difficulty?.toLowerCase() || 'easy';
+                selectDifficulty(savedDiff);
+            }
+
             closeSetupModal();
             document.getElementById('startScreen').classList.add('hidden');
             document.getElementById('gameOverScreen').classList.add('hidden');
             document.getElementById('lobbySidebar').style.display = 'none';
 
             const diff = getDiffSettings();
-            score = 0; lives = diff.lives; level = 1;
+
+            // Restore progress for returning players
+            let restoredBosses = [];
+            if (isReturningPlayer && returningPlayerProgress) {
+                score = returningPlayerProgress.score || 0;
+                level = returningPlayerProgress.level || 1;
+                lives = diff.lives;
+                // Mark all bosses before this level as defeated
+                for (let i = 1; i < level; i++) {
+                    restoredBosses.push(i);
+                }
+            } else {
+                score = 0;
+                level = 1;
+                lives = diff.lives;
+            }
+            // Clear returning player state after restoring progress
+            isReturningPlayer = false;
+            returningPlayerProgress = null;
             totalEnemiesKilled = 0;
+            respawnsUsedThisLevel = 0; // Reset respawns for new game
             bullets = []; enemies = []; particles = []; powerups = [];
             bombs = []; walls = []; weaponPickups = []; mines = [];
             player.x = logicalWidth / 2; player.y = logicalHeight - 80;
@@ -4130,7 +4591,7 @@
             // Reset boss state
             boss = null;
             bossActive = false;
-            bossDefeated = [];
+            bossDefeated = restoredBosses; // Use restored bosses for returning players
             bossTauntTimer = 0;
             bossLowHealthReported = false;
             stopBossMusic();
@@ -4143,7 +4604,7 @@
 
             document.getElementById('score').textContent = score;
             document.getElementById('lives').textContent = lives;
-            document.getElementById('levelDisplay').textContent = 'Level 1';
+            document.getElementById('levelDisplay').textContent = level <= 5 ? 'Level ' + level : 'FINAL LEVEL';
             document.getElementById('difficultyDisplay').textContent = diff.name;
             document.getElementById('difficultyDisplay').style.color = diff.color;
             updateWeaponDisplay();

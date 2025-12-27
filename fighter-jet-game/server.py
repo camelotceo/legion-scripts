@@ -10,10 +10,20 @@ import json
 import random
 import string
 import time
+import hashlib
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from pathlib import Path
 from datetime import datetime
+
+# Email service
+try:
+    import resend
+    resend.api_key = os.environ.get('RESEND_API_KEY', '')
+    USE_RESEND = bool(resend.api_key)
+except ImportError:
+    USE_RESEND = False
+    print("Warning: Resend not available")
 
 # Try to import database modules (graceful fallback for development)
 try:
@@ -740,6 +750,295 @@ def restore_backup():
         return jsonify({'error': 'No backups available'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# === RESPAWN SYSTEM API ===
+
+PLAYER_PROGRESS_FILE = DATA_DIR / 'player_progress.json'
+FREE_RESPAWNS_PER_LEVEL = 3
+
+def load_player_progress():
+    """Load all player progress from JSON file."""
+    if not PLAYER_PROGRESS_FILE.exists():
+        return {}
+    try:
+        with open(PLAYER_PROGRESS_FILE, 'r') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+def save_player_progress(data):
+    """Save player progress to JSON file."""
+    with open(PLAYER_PROGRESS_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+def generate_continue_key():
+    """Generate a unique 8-character continue key."""
+    chars = string.ascii_uppercase + string.digits
+    # Remove ambiguous characters
+    chars = chars.replace('O', '').replace('0', '').replace('I', '').replace('1', '').replace('L', '')
+    return 'FJ-' + ''.join(random.choices(chars, k=6))
+
+def send_continue_key_email(email: str, key: str, player_name: str, level: int):
+    """Send continue key via Resend."""
+    if not USE_RESEND:
+        print(f"[DEBUG] Would send key {key} to {email}")
+        return True
+
+    try:
+        resend.Emails.send({
+            "from": "Fighter Jet Game <games@felican.ai>",
+            "to": [email],
+            "subject": f"Your Continue Key - Level {level}",
+            "html": f"""
+            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #1a1a2e; color: #fff; padding: 30px; border-radius: 15px;">
+                <h1 style="color: #ffd700; text-align: center;">🎮 Fighter Jet Game</h1>
+                <h2 style="color: #4ade80; text-align: center;">Continue Key for {player_name}</h2>
+                <p style="text-align: center; color: #aaa;">Use this key to continue from Level {level}</p>
+                <div style="background: #2a2a4e; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0;">
+                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 3px; color: #4ade80;">{key}</span>
+                </div>
+                <p style="color: #888; font-size: 12px; text-align: center;">
+                    This key gives you 3 more respawns at Level {level}.<br>
+                    You can use this key anytime to resume your game.
+                </p>
+                <hr style="border-color: #333; margin: 20px 0;">
+                <p style="color: #666; font-size: 11px; text-align: center;">
+                    Good luck, pilot! 🚀
+                </p>
+            </div>
+            """
+        })
+        return True
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        return False
+
+
+@app.route('/api/player/check-name', methods=['POST'])
+def check_player_name():
+    """Check if a username is available or belongs to a returning player."""
+    data = request.get_json() or {}
+    name = str(data.get('name', '')).strip()[:12].lower()
+
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+
+    progress = load_player_progress()
+
+    if name in progress:
+        # Name exists - player needs a key to use it
+        return jsonify({
+            'available': False,
+            'hasKey': True,
+            'message': 'This name is taken. Enter your key to continue, or choose a different name.'
+        })
+
+    return jsonify({'available': True})
+
+
+@app.route('/api/player/request-key', methods=['POST'])
+def request_continue_key():
+    """Request a continue key - generates key and sends email."""
+    data = request.get_json() or {}
+    name = str(data.get('name', '')).strip()[:12].lower()
+    email = str(data.get('email', '')).strip()[:100]
+    level = int(data.get('level', 1))
+    score = int(data.get('score', 0))
+    difficulty = str(data.get('difficulty', 'EASY'))[:10].upper()
+
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+    if not email or '@' not in email:
+        return jsonify({'error': 'Valid email required'}), 400
+
+    progress = load_player_progress()
+
+    # Generate new key
+    key = generate_continue_key()
+
+    # Store player progress
+    if name not in progress:
+        progress[name] = {
+            'email': email,
+            'keys': [],
+            'currentLevel': level,
+            'currentScore': score,
+            'difficulty': difficulty,
+            'respawnsUsed': {},  # Per level: {1: 2, 2: 1, ...}
+            'totalRespawns': 0,
+            'keyRequests': 0,
+            'history': [],
+            'createdAt': datetime.now().isoformat()
+        }
+
+    # Update player data
+    player = progress[name]
+    player['email'] = email
+    player['currentLevel'] = level
+    player['currentScore'] = score
+    player['difficulty'] = difficulty
+    player['keys'].append({
+        'key': key,
+        'level': level,
+        'createdAt': datetime.now().isoformat(),
+        'used': False
+    })
+    player['keyRequests'] += 1
+    player['history'].append({
+        'action': 'key_requested',
+        'level': level,
+        'score': score,
+        'timestamp': datetime.now().isoformat()
+    })
+
+    # Reset respawns for this level (they get 3 more)
+    player['respawnsUsed'][str(level)] = 0
+
+    save_player_progress(progress)
+
+    # Send email
+    email_sent = send_continue_key_email(email, key, name, level)
+
+    return jsonify({
+        'success': True,
+        'key': key,
+        'emailSent': email_sent,
+        'respawnsRemaining': FREE_RESPAWNS_PER_LEVEL
+    })
+
+
+@app.route('/api/player/validate-key', methods=['POST'])
+def validate_continue_key():
+    """Validate a continue key and return player progress."""
+    data = request.get_json() or {}
+    name = str(data.get('name', '')).strip()[:12].lower()
+    key = str(data.get('key', '')).strip().upper()
+
+    if not name or not key:
+        return jsonify({'error': 'Name and key required'}), 400
+
+    progress = load_player_progress()
+
+    if name not in progress:
+        return jsonify({'valid': False, 'error': 'Player not found'}), 404
+
+    player = progress[name]
+
+    # Check if key is valid
+    valid_key = None
+    for k in player['keys']:
+        if k['key'] == key:
+            valid_key = k
+            break
+
+    if not valid_key:
+        return jsonify({'valid': False, 'error': 'Invalid key'}), 401
+
+    # Mark key as used
+    valid_key['used'] = True
+    valid_key['usedAt'] = datetime.now().isoformat()
+
+    # Reset respawns for the key's level
+    player['respawnsUsed'][str(valid_key['level'])] = 0
+
+    player['history'].append({
+        'action': 'key_validated',
+        'key': key,
+        'level': valid_key['level'],
+        'timestamp': datetime.now().isoformat()
+    })
+
+    save_player_progress(progress)
+
+    return jsonify({
+        'valid': True,
+        'level': valid_key['level'],
+        'score': player['currentScore'],
+        'difficulty': player['difficulty'],
+        'respawnsRemaining': FREE_RESPAWNS_PER_LEVEL
+    })
+
+
+@app.route('/api/player/save-progress', methods=['POST'])
+def save_progress():
+    """Save player's current progress (called on respawn)."""
+    data = request.get_json() or {}
+    name = str(data.get('name', '')).strip()[:12].lower()
+    level = int(data.get('level', 1))
+    score = int(data.get('score', 0))
+    difficulty = str(data.get('difficulty', 'EASY'))[:10].upper()
+    respawnsUsed = int(data.get('respawnsUsed', 0))
+
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+
+    progress = load_player_progress()
+
+    if name not in progress:
+        # Create new player entry
+        progress[name] = {
+            'email': None,
+            'keys': [],
+            'currentLevel': level,
+            'currentScore': score,
+            'difficulty': difficulty,
+            'respawnsUsed': {},
+            'totalRespawns': 0,
+            'keyRequests': 0,
+            'history': [],
+            'createdAt': datetime.now().isoformat()
+        }
+
+    player = progress[name]
+    player['currentLevel'] = level
+    player['currentScore'] = score
+    player['difficulty'] = difficulty
+    player['respawnsUsed'][str(level)] = respawnsUsed
+    player['totalRespawns'] += 1
+    player['lastUpdate'] = datetime.now().isoformat()
+
+    save_player_progress(progress)
+
+    # Calculate remaining respawns
+    level_respawns = player['respawnsUsed'].get(str(level), 0)
+    remaining = max(0, FREE_RESPAWNS_PER_LEVEL - level_respawns)
+
+    return jsonify({
+        'success': True,
+        'respawnsRemaining': remaining,
+        'needsKey': remaining <= 0
+    })
+
+
+@app.route('/api/player/get-progress', methods=['POST'])
+def get_progress():
+    """Get player's saved progress."""
+    data = request.get_json() or {}
+    name = str(data.get('name', '')).strip()[:12].lower()
+
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+
+    progress = load_player_progress()
+
+    if name not in progress:
+        return jsonify({
+            'found': False,
+            'respawnsUsed': {},
+            'respawnsRemaining': FREE_RESPAWNS_PER_LEVEL
+        })
+
+    player = progress[name]
+
+    return jsonify({
+        'found': True,
+        'level': player.get('currentLevel', 1),
+        'score': player.get('currentScore', 0),
+        'difficulty': player.get('difficulty', 'EASY'),
+        'respawnsUsed': player.get('respawnsUsed', {}),
+        'hasKeys': len(player.get('keys', [])) > 0
+    })
 
 
 # Initialize scheduler when running with gunicorn
