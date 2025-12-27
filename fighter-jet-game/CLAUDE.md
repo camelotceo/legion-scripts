@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Legion's Space Fight - a multiplayer space shooter game with boss battles, live spectating, and persistent leaderboards.
 
-**Live URL:** https://games.felican.ai
+**Live URL:** https://fighter-jet-game.felican.ai
 
 ## Local Development
 
@@ -55,8 +55,8 @@ ssh felican.ai "cd /home/dev/legion-scripts/fighter-jet-game && docker compose b
 ### Data Flow
 
 - **Redis** (real-time): Active players, game state for spectating, multiplayer rooms, matchmaking queues
-- **PostgreSQL** (persistent): Leaderboards, player profiles, game sessions, event logs
-- **JSON files** (fallback): `data/leaderboard.json`, `data/player_progress.json`
+- **JSON files** (production): `data/leaderboard.json`, `data/player_progress.json`
+- **PostgreSQL** (local dev only): Leaderboards, player profiles, game sessions - not deployed to production
 
 ### Multiplayer Modes
 

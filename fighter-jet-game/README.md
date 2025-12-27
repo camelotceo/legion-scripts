@@ -2,7 +2,7 @@
 
 A fast-paced space shooter game with boss battles, multiple weapons, live multiplayer scoring, and persistent leaderboards.
 
-**Live URL:** https://games.felican.ai
+**Live URL:** https://fighter-jet-game.felican.ai
 
 ## Game Features
 
