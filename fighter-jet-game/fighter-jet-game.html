@@ -2185,6 +2185,7 @@
             laserActive = false;
             deactivateShield();
             ghostActive = false;
+            lightningFlashAlpha = 0;
             boss = null;
             bossActive = false;
             bossTauntTimer = 0;
@@ -2311,6 +2312,7 @@
             laserActive = false;
             deactivateShield();
             ghostActive = false;
+            lightningFlashAlpha = 0;
 
             // Update display
             document.getElementById('lives').textContent = lives;
@@ -3462,15 +3464,16 @@
         }
 
         function spawnPowerup() {
-            // Powerup types: shield, fullLife, ghost, life1, life2, life3
+            // Powerup types: shield, fullLife, ghost, life1, life2, life3, lightning
             const rand = Math.random();
             let type;
-            if (rand < 0.35) type = 'shield';           // 35% shield
-            else if (rand < 0.45) type = 'fullLife';    // 10% full life restore
-            else if (rand < 0.55) type = 'ghost';       // 10% ghost mode
-            else if (rand < 0.75) type = 'life1';       // 20% +1 life
-            else if (rand < 0.90) type = 'life2';       // 15% +2 lives
-            else type = 'life3';                         // 10% +3 lives
+            if (rand < 0.30) type = 'shield';           // 30% shield
+            else if (rand < 0.38) type = 'fullLife';    // 8% full life restore
+            else if (rand < 0.46) type = 'ghost';       // 8% ghost mode
+            else if (rand < 0.54) type = 'lightning';   // 8% lightning bolt
+            else if (rand < 0.72) type = 'life1';       // 18% +1 life
+            else if (rand < 0.88) type = 'life2';       // 16% +2 lives
+            else type = 'life3';                         // 12% +3 lives
 
             powerups.push({
                 x: Math.random() * (logicalWidth - 60) + 30, y: -30,
@@ -3803,18 +3806,45 @@
             }
         }
 
+        function getLaserEndY() {
+            // Find the lowest wall that blocks the laser (closest to player)
+            let endY = 0; // Top of screen by default
+            const laserLeft = player.x - 15;
+            const laserRight = player.x + 15;
+
+            for (const wall of walls) {
+                // Check if wall is in the laser's horizontal path
+                if (wall.x < laserRight && wall.x + wall.width > laserLeft) {
+                    // Check if wall is above the player
+                    if (wall.y + wall.height < player.y - 25) {
+                        // Find the bottom of this wall (where laser would hit)
+                        const wallBottom = wall.y + wall.height;
+                        if (wallBottom > endY) {
+                            endY = wallBottom; // Laser stops at bottom of wall
+                        }
+                    }
+                }
+            }
+            return endY;
+        }
+
         function drawLaser() {
             if (!laserActive || currentWeapon !== 'laser') return;
-            const gradient = ctx.createLinearGradient(player.x, 0, player.x, player.y);
+            const laserEndY = getLaserEndY();
+            const gradient = ctx.createLinearGradient(player.x, laserEndY, player.x, player.y);
             gradient.addColorStop(0, 'rgba(255, 0, 255, 0)');
             gradient.addColorStop(0.5, 'rgba(255, 0, 255, 0.8)');
             gradient.addColorStop(1, 'rgba(255, 100, 255, 1)');
             ctx.fillStyle = 'rgba(255, 0, 255, 0.2)';
-            ctx.fillRect(player.x - 15, 0, 30, player.y - 25);
+            ctx.fillRect(player.x - 15, laserEndY, 30, player.y - 25 - laserEndY);
             ctx.fillStyle = gradient;
-            ctx.fillRect(player.x - 8, 0, 16, player.y - 25);
+            ctx.fillRect(player.x - 8, laserEndY, 16, player.y - 25 - laserEndY);
             ctx.fillStyle = '#ffffff';
-            ctx.fillRect(player.x - 3, 0, 6, player.y - 25);
+            ctx.fillRect(player.x - 3, laserEndY, 6, player.y - 25 - laserEndY);
+            // Draw impact spark at wall
+            if (laserEndY > 0) {
+                createExplosion(player.x, laserEndY, '#ff00ff', 2);
+            }
         }
 
         function drawBomb(bomb) {
@@ -3928,6 +3958,28 @@
                     ctx.fill();
                     break;
 
+                case 'lightning':
+                    // Lightning bolt icon - electric yellow/blue
+                    ctx.fillStyle = 'rgba(255, 255, 100, 0.4)';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+                    ctx.fill();
+                    // Lightning bolt shape
+                    ctx.fillStyle = '#ffff00';
+                    ctx.strokeStyle = '#0088ff';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(3, -14);
+                    ctx.lineTo(-8, 0);
+                    ctx.lineTo(-2, 0);
+                    ctx.lineTo(-5, 14);
+                    ctx.lineTo(8, 0);
+                    ctx.lineTo(2, 0);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    break;
+
                 case 'life1':
                 case 'life2':
                 case 'life3':
@@ -4037,8 +4089,7 @@
 
         // === SHOOTING ===
         function shoot() {
-            // Can't shoot while ghost
-            if (ghostActive) return;
+            // Ghost mode allows shooting now
 
             const now = Date.now();
             const weapon = WEAPONS[currentWeapon];
@@ -4134,6 +4185,53 @@
             ghostActive = false;
         }
 
+        // Lightning state
+        let lightningFlashAlpha = 0;
+
+        function activateLightning() {
+            // Flash screen white
+            lightningFlashAlpha = 1.0;
+
+            // Kill all enemies on screen
+            const killedCount = enemies.length;
+            enemies.forEach(e => {
+                createExplosion(e.x, e.y, '#ffff00');
+                score += 100;
+            });
+            enemies = [];
+            totalEnemiesKilled += killedCount;
+            document.getElementById('score').textContent = score;
+
+            // 3x damage to boss (equivalent to 3 regular bullets worth of damage)
+            if (boss) {
+                const lightningDamage = 3; // 3x a regular hit
+                damageBoss(lightningDamage);
+                createExplosion(boss.x, boss.y, '#ffff00');
+                createExplosion(boss.x - 30, boss.y + 20, '#00aaff');
+                createExplosion(boss.x + 30, boss.y + 20, '#00aaff');
+            }
+
+            // Play thunder sound (reuse explosion with higher pitch feel)
+            playExplosion();
+
+            // Check level up after killing enemies
+            checkLevelUp();
+        }
+
+        function updateLightningFlash(dt) {
+            if (lightningFlashAlpha > 0) {
+                lightningFlashAlpha -= dt * 3; // Fade out over ~0.33 seconds
+                if (lightningFlashAlpha < 0) lightningFlashAlpha = 0;
+            }
+        }
+
+        function drawLightningFlash() {
+            if (lightningFlashAlpha > 0) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${lightningFlashAlpha})`;
+                ctx.fillRect(0, 0, logicalWidth, logicalHeight);
+            }
+        }
+
         function checkLevelUp() {
             // Determine which boss should spawn based on score thresholds
             // Boss 1: 1k, Boss 2: 3k, Boss 3: 5k, Boss 4: 7k, Boss 5: 9k, Boss 6: 11k
@@ -4194,11 +4292,12 @@
 
             if (autoFire) shoot();
 
-            // Laser damage
+            // Laser damage (blocked by walls)
             if (laserActive && currentWeapon === 'laser') {
-                // Damage enemies
+                const laserEndY = getLaserEndY();
+                // Damage enemies (only those below wall blocking point)
                 enemies = enemies.filter(enemy => {
-                    if (enemy.x > player.x - 15 && enemy.x < player.x + 15 && enemy.y < player.y) {
+                    if (enemy.x > player.x - 15 && enemy.x < player.x + 15 && enemy.y < player.y && enemy.y > laserEndY) {
                         score += 100;
                         totalEnemiesKilled++;
                         document.getElementById('score').textContent = score;
@@ -4209,8 +4308,8 @@
                     }
                     return true;
                 });
-                // Damage boss
-                if (boss && boss.x > player.x - 15 && boss.x < player.x + 15 && boss.y < player.y) {
+                // Damage boss (only if not blocked by wall)
+                if (boss && boss.x > player.x - 15 && boss.x < player.x + 15 && boss.y < player.y && boss.y > laserEndY) {
                     damageBoss(0.5 * dt * 60); // Continuous damage
                 }
             }
@@ -4445,6 +4544,11 @@
                             activateGhost();
                             reportAction('got_powerup');
                             break;
+                        case 'lightning':
+                            createExplosion(p.x, p.y, '#ffff00');
+                            activateLightning();
+                            reportAction('got_powerup');
+                            break;
                         case 'life1':
                             createExplosion(p.x, p.y, '#ffd700');
                             playLifeUp();
@@ -4517,6 +4621,7 @@
 
             updateBackground(dt);
             updateParticles(dt);
+            updateLightningFlash(dt);
         }
 
         function draw() {
@@ -4539,6 +4644,8 @@
                 drawPlayer();
                 ctx.globalAlpha = 1;
             }
+            // Lightning flash overlay (drawn last)
+            drawLightningFlash();
         }
 
         let spawnAccumulator = 0;
@@ -4626,6 +4733,7 @@
             laserActive = false;
             deactivateShield();
             ghostActive = false;
+            lightningFlashAlpha = 0;
             // Reset boss state
             boss = null;
             bossActive = false;

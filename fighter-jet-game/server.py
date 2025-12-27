@@ -955,21 +955,29 @@ def validate_continue_key():
     if not valid_key or not player:
         return jsonify({'valid': False, 'error': 'Invalid key'}), 401
 
-    # Check if key has already been used
-    if valid_key.get('used', False):
-        return jsonify({'valid': False, 'error': 'Key already used. Request a new key.'}), 401
+    # Check respawns remaining on key (default to 3 for old keys without this field)
+    respawns_on_key = valid_key.get('respawnsRemaining', 3 if not valid_key.get('used') else 0)
 
-    # Mark key as used (keys are single-use, gives 3 respawns)
-    valid_key['used'] = True
-    valid_key['usedAt'] = datetime.now().isoformat()
+    if respawns_on_key <= 0:
+        return jsonify({'valid': False, 'error': 'Key exhausted (0 respawns left). Request a new key.'}), 401
 
-    # Reset respawns for the current level
+    # Decrement respawns on this key
+    valid_key['respawnsRemaining'] = respawns_on_key - 1
+    valid_key['lastUsedAt'] = datetime.now().isoformat()
+
+    # Mark as fully used when respawns hit 0
+    if valid_key['respawnsRemaining'] <= 0:
+        valid_key['used'] = True
+        valid_key['usedAt'] = datetime.now().isoformat()
+
+    # Reset respawns for the current level (gives 1 respawn per key use)
     player['respawnsUsed'][str(player['currentLevel'])] = 0
 
     player['history'].append({
         'action': 'key_validated',
         'key': key,
         'level': player['currentLevel'],
+        'respawnsLeftOnKey': valid_key['respawnsRemaining'],
         'timestamp': datetime.now().isoformat()
     })
 
@@ -981,7 +989,8 @@ def validate_continue_key():
         'level': player['currentLevel'],
         'score': player['currentScore'],
         'difficulty': player['difficulty'],
-        'respawnsRemaining': FREE_RESPAWNS_PER_LEVEL
+        'respawnsRemaining': valid_key['respawnsRemaining'],
+        'keyRespawnsLeft': valid_key['respawnsRemaining']
     })
 
 
