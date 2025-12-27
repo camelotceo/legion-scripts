@@ -1,67 +1,103 @@
-# Fighter Jet Game - Claude Development Notes
+# CLAUDE.md
 
-## Deployment Process
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-### Production Server
-- **Host**: felican.ai (SSH: `ssh felican.ai`)
-- **Path**: `/home/dev/legion-scripts/fighter-jet-game`
-- **Git repo**: https://github.com/camelotceo/legion-scripts.git
+## Project Overview
 
-### Deployment Steps
+Legion's Space Fight - a multiplayer space shooter game with boss battles, live spectating, and persistent leaderboards.
 
-1. **Commit and push changes locally:**
-   ```bash
-   git add . && git commit -m "Your message" && git push origin main
-   ```
+**Live URL:** https://games.felican.ai
 
-2. **SSH to server and pull:**
-   ```bash
-   ssh felican.ai "cd /home/dev/legion-scripts/fighter-jet-game && git pull origin main"
-   ```
+## Local Development
 
-3. **Rebuild and restart containers (if Python files changed):**
-   ```bash
-   ssh felican.ai "cd /home/dev/legion-scripts/fighter-jet-game && docker compose build --no-cache && docker compose up -d"
-   ```
+```bash
+# Start all services (gameserver, Redis, PostgreSQL)
+docker compose -f docker-compose.local.yml up -d
 
-4. **For HTML-only changes (no rebuild needed):**
-   The `fighter-jet-game.html` file is volume mounted, so changes take effect immediately after `git pull`.
+# Access at http://localhost:8080
 
-### Environment Variables Setup (First-time or when adding new secrets)
+# View logs
+docker logs -f fighter-jet-game-local
 
-**IMPORTANT: Never commit API keys to git!** All secrets are stored in `.env` on the server.
+# Run server directly (no Docker, Redis/Postgres features disabled)
+python3 server.py
+```
 
-1. **Create/update .env file on server:**
-   ```bash
-   ssh felican.ai "cat > /home/dev/legion-scripts/fighter-jet-game/.env << 'EOF'
-   B2_BUCKET=fighter-game-backup
-   B2_KEY_ID=<your_b2_key_id>
-   B2_APP_KEY=<your_b2_app_key>
-   RESEND_API_KEY=<your_resend_api_key>
-   EOF"
-   ```
+## Deployment
 
-2. **Restart containers to pick up new env vars:**
-   ```bash
-   ssh felican.ai "cd /home/dev/legion-scripts/fighter-jet-game && docker compose up -d"
-   ```
+**Production Server:** felican.ai (SSH: `ssh felican.ai`)
+**Path:** `/home/dev/legion-scripts/fighter-jet-game`
 
-### Important Notes
-- **Never commit .env or API keys to git** - use `.env.example` as reference
-- Use `docker compose` (with space) on server, NOT `docker-compose`
-- HTML file is volume mounted at `./fighter-jet-game.html:/app/fighter-jet-game.html:ro`
-- Data persists in `./data` directory (volume mounted)
-- Redis data persists in `redis_data` Docker volume
+```bash
+# Deploy changes
+git add . && git commit -m "message" && git push origin main
+ssh felican.ai "cd /home/dev/legion-scripts/fighter-jet-game && git pull origin main"
 
-## Debug Modes
+# Rebuild containers (if Python files changed)
+ssh felican.ai "cd /home/dev/legion-scripts/fighter-jet-game && docker compose build --no-cache && docker compose up -d"
+```
 
-- **`ending123`** - Enter as player name to immediately see victory screen
-- **`invincible`** - Enter as player name for unlimited lives
+**Note:** HTML-only changes take effect immediately after `git pull` (volume mounted).
 
 ## Architecture
 
-- **Frontend**: Single HTML file with embedded JS/CSS
-- **Backend**: Flask (Python) with Gunicorn
-- **Cache**: Redis for live player state, spectating, comments
-- **Database**: PostgreSQL for leaderboards, player history, game sessions
-- **Backup**: Local backups every minute, Backblaze B2 offload every 6 hours
+### File Responsibilities
+
+| File | Purpose |
+|------|---------|
+| `fighter-jet-game.html` | Complete frontend (HTML/CSS/JS in single file, ~7000 lines) |
+| `server.py` | Flask API server, all HTTP endpoints |
+| `websocket_handler.py` | Flask-SocketIO handlers for real-time multiplayer |
+| `redis_client.py` | Redis operations: live players, rooms, matchmaking, spectating |
+| `database.py` | PostgreSQL operations: leaderboards, player history, sessions |
+| `backup.py` | Scheduled backups to local JSON and Backblaze B2 |
+
+### Data Flow
+
+- **Redis** (real-time): Active players, game state for spectating, multiplayer rooms, matchmaking queues
+- **PostgreSQL** (persistent): Leaderboards, player profiles, game sessions, event logs
+- **JSON files** (fallback): `data/leaderboard.json`, `data/player_progress.json`
+
+### Multiplayer Modes
+
+1. **Tag Team (Coop)**: 2 players vs enemies, relay-style respawns (5s delay, max 3 per player), shared score
+2. **1v1 (Versus)**: 2 players shoot each other, hazard point system, best-of-3 rounds
+
+Multiplayer uses WebSocket for real-time position sync (50ms intervals) and room state management.
+
+### Continue Key System
+
+Players who die can request a continue key via email. Keys are formatted `FJ-XXXXXX` and tracked in `data/player_progress.json` with limited respawns per key.
+
+## Debug Modes
+
+Enter these as player name:
+- `ending123` - Skip to victory screen
+- `invincible` - Unlimited lives
+
+## Environment Variables
+
+Server-side (in `.env` on production):
+- `REDIS_URL` - Redis connection string
+- `DATABASE_URL` - PostgreSQL connection string (local dev only)
+- `B2_BUCKET`, `B2_KEY_ID`, `B2_APP_KEY` - Backblaze B2 backup credentials
+- `RESEND_API_KEY` - Email service for continue keys
+
+## Key API Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/api/leaderboard` | GET/POST leaderboard scores |
+| `/api/players/active` | Live player list for spectating |
+| `/api/player/request-key` | Request continue key via email |
+| `/api/player/validate-key` | Validate continue key for respawn |
+| `/api/rooms/create` | Create multiplayer room |
+| `/api/rooms/join/{code}` | Join room by 6-char code |
+| `/api/matchmaking/join` | Quick match queue |
+
+## Important Notes
+
+- Use `docker compose` (with space), not `docker-compose`
+- HTML file is read-only volume mounted in production
+- Redis data persists in `redis_data` Docker volume
+- Game data persists in `./data` directory

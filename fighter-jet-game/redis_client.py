@@ -199,3 +199,299 @@ def clear_comments(player_id: str):
     """Clear all comments for a player."""
     r = get_redis()
     r.delete(f"comments:{player_id}")
+
+
+# === MULTIPLAYER ROOMS ===
+
+ROOM_TTL = 300  # 5 minutes for inactive rooms
+MATCHMAKING_TTL = 120  # 2 minutes in queue before timeout
+
+
+def generate_room_code() -> str:
+    """Generate a 6-character room code (no confusing characters)."""
+    import random
+    chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    return ''.join(random.choices(chars, k=6))
+
+
+def create_room(host_id: str, host_name: str, mode: str, difficulty: str) -> str:
+    """Create a new multiplayer room. Returns room code."""
+    r = get_redis()
+
+    # Generate unique room code
+    for _ in range(10):  # Try up to 10 times
+        code = generate_room_code()
+        if not r.exists(f"room:{code}"):
+            break
+
+    room_data = {
+        'code': code,
+        'mode': mode,  # 'coop' or 'versus'
+        'host_id': host_id,
+        'host_name': host_name,
+        'status': 'waiting',
+        'difficulty': difficulty,
+        'created_at': datetime.now().isoformat(),
+        'players': json.dumps([{'id': host_id, 'name': host_name, 'ready': False, 'slot': 1}])
+    }
+
+    r.hset(f"room:{code}", mapping=room_data)
+    r.expire(f"room:{code}", ROOM_TTL)
+    r.sadd(f"room_players:{code}", host_id)
+    r.expire(f"room_players:{code}", ROOM_TTL)
+
+    # Track which room this player is in
+    r.set(f"player_room:{host_id}", code, ex=ROOM_TTL)
+
+    return code
+
+
+def get_room(code: str) -> dict:
+    """Get room data by code."""
+    r = get_redis()
+    data = r.hgetall(f"room:{code}")
+    if not data:
+        return None
+
+    # Parse JSON fields
+    if 'players' in data:
+        data['players'] = json.loads(data['players'])
+    return data
+
+
+def join_room(code: str, player_id: str, player_name: str) -> dict:
+    """Join an existing room. Returns room data or None if failed."""
+    r = get_redis()
+    room = get_room(code)
+
+    if not room:
+        return {'error': 'Room not found'}
+
+    if room['status'] != 'waiting':
+        return {'error': 'Game already started'}
+
+    players = room['players']
+    if len(players) >= 2:
+        return {'error': 'Room is full'}
+
+    # Check if player already in room
+    if any(p['id'] == player_id for p in players):
+        return room
+
+    # Add player
+    players.append({'id': player_id, 'name': player_name, 'ready': False, 'slot': 2})
+    r.hset(f"room:{code}", 'players', json.dumps(players))
+    r.sadd(f"room_players:{code}", player_id)
+    r.expire(f"room:{code}", ROOM_TTL)
+    r.expire(f"room_players:{code}", ROOM_TTL)
+
+    # Track which room this player is in
+    r.set(f"player_room:{player_id}", code, ex=ROOM_TTL)
+
+    room['players'] = players
+    return room
+
+
+def leave_room(code: str, player_id: str) -> bool:
+    """Leave a room. Returns True if successful."""
+    r = get_redis()
+    room = get_room(code)
+
+    if not room:
+        return False
+
+    players = room['players']
+    players = [p for p in players if p['id'] != player_id]
+
+    r.srem(f"room_players:{code}", player_id)
+    r.delete(f"player_room:{player_id}")
+
+    if len(players) == 0:
+        # Delete empty room
+        r.delete(f"room:{code}")
+        r.delete(f"room_players:{code}")
+    else:
+        # Update room
+        r.hset(f"room:{code}", 'players', json.dumps(players))
+        # If host left, make other player host
+        if room['host_id'] == player_id and players:
+            r.hset(f"room:{code}", 'host_id', players[0]['id'])
+            r.hset(f"room:{code}", 'host_name', players[0]['name'])
+
+    return True
+
+
+def set_player_ready(code: str, player_id: str, ready: bool) -> dict:
+    """Toggle player ready status. Returns updated room."""
+    r = get_redis()
+    room = get_room(code)
+
+    if not room:
+        return None
+
+    players = room['players']
+    for p in players:
+        if p['id'] == player_id:
+            p['ready'] = ready
+            break
+
+    r.hset(f"room:{code}", 'players', json.dumps(players))
+    r.expire(f"room:{code}", ROOM_TTL)
+
+    room['players'] = players
+    return room
+
+
+def start_room_game(code: str) -> bool:
+    """Mark room as game started. Returns True if successful."""
+    r = get_redis()
+    room = get_room(code)
+
+    if not room:
+        return False
+
+    # Check all players ready
+    players = room['players']
+    if len(players) < 2:
+        return False
+
+    if not all(p['ready'] for p in players):
+        return False
+
+    r.hset(f"room:{code}", 'status', 'playing')
+    r.hset(f"room:{code}", 'started_at', datetime.now().isoformat())
+    r.expire(f"room:{code}", ROOM_TTL * 4)  # Extend TTL for gameplay
+
+    return True
+
+
+def end_room_game(code: str, winner_id: str = None):
+    """Mark room game as finished."""
+    r = get_redis()
+    r.hset(f"room:{code}", 'status', 'finished')
+    r.hset(f"room:{code}", 'ended_at', datetime.now().isoformat())
+    if winner_id:
+        r.hset(f"room:{code}", 'winner_id', winner_id)
+    r.expire(f"room:{code}", 60)  # Keep for 1 minute after game ends
+
+
+def get_player_room(player_id: str) -> str:
+    """Get the room code a player is currently in."""
+    r = get_redis()
+    return r.get(f"player_room:{player_id}")
+
+
+# === MATCHMAKING QUEUE ===
+
+def join_matchmaking(player_id: str, player_name: str, mode: str, difficulty: str) -> bool:
+    """Add player to matchmaking queue."""
+    r = get_redis()
+
+    # Store player data for matching
+    player_data = json.dumps({
+        'id': player_id,
+        'name': player_name,
+        'difficulty': difficulty,
+        'joined_at': datetime.now().isoformat()
+    })
+
+    # Add to sorted set (score = timestamp for FIFO)
+    r.zadd(f"matchmaking:{mode}", {player_data: datetime.now().timestamp()})
+    r.expire(f"matchmaking:{mode}", MATCHMAKING_TTL)
+
+    # Track that this player is in queue
+    r.set(f"in_queue:{player_id}", mode, ex=MATCHMAKING_TTL)
+
+    return True
+
+
+def leave_matchmaking(player_id: str) -> bool:
+    """Remove player from matchmaking queue."""
+    r = get_redis()
+    mode = r.get(f"in_queue:{player_id}")
+
+    if not mode:
+        return False
+
+    # Find and remove player from queue
+    queue = r.zrange(f"matchmaking:{mode}", 0, -1)
+    for entry in queue:
+        data = json.loads(entry)
+        if data['id'] == player_id:
+            r.zrem(f"matchmaking:{mode}", entry)
+            break
+
+    r.delete(f"in_queue:{player_id}")
+    return True
+
+
+def find_match(player_id: str, mode: str, difficulty: str) -> dict:
+    """Try to find a match for the player. Returns match info or None."""
+    r = get_redis()
+
+    # Get oldest player in queue (excluding self)
+    queue = r.zrange(f"matchmaking:{mode}", 0, -1)
+
+    for entry in queue:
+        data = json.loads(entry)
+        if data['id'] != player_id:
+            # Found a match! Remove both from queue
+            r.zrem(f"matchmaking:{mode}", entry)
+            leave_matchmaking(player_id)
+
+            # Create room for them
+            room_code = create_room(data['id'], data['name'], mode, difficulty)
+            join_room(room_code, player_id, get_player(player_id).get('name', 'Player'))
+
+            return {
+                'matched': True,
+                'room_code': room_code,
+                'opponent': data
+            }
+
+    return {'matched': False, 'queue_position': get_queue_position(player_id, mode)}
+
+
+def get_queue_position(player_id: str, mode: str) -> int:
+    """Get player's position in matchmaking queue."""
+    r = get_redis()
+    queue = r.zrange(f"matchmaking:{mode}", 0, -1)
+
+    for i, entry in enumerate(queue):
+        data = json.loads(entry)
+        if data['id'] == player_id:
+            return i + 1
+
+    return 0
+
+
+def is_in_queue(player_id: str) -> str:
+    """Check if player is in a matchmaking queue. Returns mode or None."""
+    r = get_redis()
+    return r.get(f"in_queue:{player_id}")
+
+
+# === MULTIPLAYER GAME STATE ===
+
+MULTIPLAYER_STATE_TTL = 10  # 10 seconds for multiplayer state
+
+
+def set_multiplayer_state(room_code: str, state: dict):
+    """Store multiplayer game state."""
+    r = get_redis()
+    r.set(f"mp_state:{room_code}", json.dumps(state), ex=MULTIPLAYER_STATE_TTL)
+
+
+def get_multiplayer_state(room_code: str) -> dict:
+    """Get multiplayer game state."""
+    r = get_redis()
+    data = r.get(f"mp_state:{room_code}")
+    if data:
+        return json.loads(data)
+    return None
+
+
+def delete_multiplayer_state(room_code: str):
+    """Remove multiplayer game state."""
+    r = get_redis()
+    r.delete(f"mp_state:{room_code}")

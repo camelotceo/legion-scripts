@@ -36,8 +36,26 @@ except ImportError:
     USE_POSTGRES = False
     print("Warning: Redis/Postgres modules not available, using in-memory fallback")
 
+# Try to import WebSocket handler
+try:
+    from websocket_handler import init_socketio
+    USE_WEBSOCKET = True
+except ImportError:
+    USE_WEBSOCKET = False
+    print("Warning: WebSocket handler not available")
+
 app = Flask(__name__)
 CORS(app)
+
+# Initialize WebSocket if available
+socketio = None
+if USE_WEBSOCKET:
+    try:
+        socketio = init_socketio(app)
+        print("WebSocket support enabled")
+    except Exception as e:
+        print(f"Warning: WebSocket initialization failed: {e}")
+        USE_WEBSOCKET = False
 
 # Paths
 BASE_DIR = Path(__file__).parent
@@ -1075,6 +1093,261 @@ def get_progress():
     })
 
 
+# === MULTIPLAYER ROOM API ===
+
+@app.route('/api/rooms/create', methods=['POST'])
+def create_room():
+    """Create a new multiplayer room."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    data = request.get_json() or {}
+    player_id = data.get('playerId')
+    player_name = data.get('playerName', 'Player')
+    mode = data.get('mode', 'coop')  # 'coop' or 'versus'
+    difficulty = data.get('difficulty', 'MEDIUM')
+
+    if not player_id:
+        return jsonify({'error': 'Missing playerId'}), 400
+
+    if mode not in ['coop', 'versus']:
+        return jsonify({'error': 'Invalid mode'}), 400
+
+    try:
+        room_code = redis_client.create_room(player_id, player_name, mode, difficulty)
+        room = redis_client.get_room(room_code)
+        return jsonify({
+            'success': True,
+            'roomCode': room_code,
+            'room': room
+        })
+    except Exception as e:
+        print(f"Error creating room: {e}")
+        return jsonify({'error': 'Failed to create room'}), 500
+
+
+@app.route('/api/rooms/<code>', methods=['GET'])
+def get_room(code):
+    """Get room status."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    room = redis_client.get_room(code.upper())
+    if not room:
+        return jsonify({'error': 'Room not found'}), 404
+
+    return jsonify(room)
+
+
+@app.route('/api/rooms/join/<code>', methods=['POST'])
+def join_room(code):
+    """Join an existing room."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    data = request.get_json() or {}
+    player_id = data.get('playerId')
+    player_name = data.get('playerName', 'Player')
+
+    if not player_id:
+        return jsonify({'error': 'Missing playerId'}), 400
+
+    try:
+        result = redis_client.join_room(code.upper(), player_id, player_name)
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify({'success': True, 'room': result})
+    except Exception as e:
+        print(f"Error joining room: {e}")
+        return jsonify({'error': 'Failed to join room'}), 500
+
+
+@app.route('/api/rooms/leave', methods=['POST'])
+def leave_room():
+    """Leave current room."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    data = request.get_json() or {}
+    player_id = data.get('playerId')
+
+    if not player_id:
+        return jsonify({'error': 'Missing playerId'}), 400
+
+    room_code = redis_client.get_player_room(player_id)
+    if room_code:
+        redis_client.leave_room(room_code, player_id)
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/rooms/<code>/ready', methods=['POST'])
+def toggle_ready(code):
+    """Toggle player ready status."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    data = request.get_json() or {}
+    player_id = data.get('playerId')
+    ready = data.get('ready', True)
+
+    if not player_id:
+        return jsonify({'error': 'Missing playerId'}), 400
+
+    room = redis_client.set_player_ready(code.upper(), player_id, ready)
+    if not room:
+        return jsonify({'error': 'Room not found'}), 404
+
+    return jsonify({'success': True, 'room': room})
+
+
+@app.route('/api/rooms/<code>/start', methods=['POST'])
+def start_game(code):
+    """Start the game (host only)."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    data = request.get_json() or {}
+    player_id = data.get('playerId')
+
+    room = redis_client.get_room(code.upper())
+    if not room:
+        return jsonify({'error': 'Room not found'}), 404
+
+    if room['host_id'] != player_id:
+        return jsonify({'error': 'Only host can start'}), 403
+
+    if not redis_client.start_room_game(code.upper()):
+        return jsonify({'error': 'Cannot start: need 2 ready players'}), 400
+
+    return jsonify({'success': True, 'room': redis_client.get_room(code.upper())})
+
+
+# === MATCHMAKING API ===
+
+@app.route('/api/matchmaking/join', methods=['POST'])
+def join_matchmaking():
+    """Join quick match queue."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    data = request.get_json() or {}
+    player_id = data.get('playerId')
+    player_name = data.get('playerName', 'Player')
+    mode = data.get('mode', 'coop')
+    difficulty = data.get('difficulty', 'MEDIUM')
+
+    if not player_id:
+        return jsonify({'error': 'Missing playerId'}), 400
+
+    if mode not in ['coop', 'versus']:
+        return jsonify({'error': 'Invalid mode'}), 400
+
+    # Check if already in queue
+    existing_queue = redis_client.is_in_queue(player_id)
+    if existing_queue:
+        # Try to find match
+        result = redis_client.find_match(player_id, mode, difficulty)
+        return jsonify(result)
+
+    # Join queue
+    redis_client.join_matchmaking(player_id, player_name, mode, difficulty)
+
+    # Immediately try to find a match
+    result = redis_client.find_match(player_id, mode, difficulty)
+    return jsonify(result)
+
+
+@app.route('/api/matchmaking/leave', methods=['POST'])
+def leave_matchmaking():
+    """Leave matchmaking queue."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    data = request.get_json() or {}
+    player_id = data.get('playerId')
+
+    if not player_id:
+        return jsonify({'error': 'Missing playerId'}), 400
+
+    redis_client.leave_matchmaking(player_id)
+    return jsonify({'success': True})
+
+
+@app.route('/api/matchmaking/status', methods=['GET'])
+def matchmaking_status():
+    """Check matchmaking queue status."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    player_id = request.args.get('playerId')
+    if not player_id:
+        return jsonify({'error': 'Missing playerId'}), 400
+
+    mode = redis_client.is_in_queue(player_id)
+    if not mode:
+        return jsonify({'inQueue': False})
+
+    # Try to find match
+    result = redis_client.find_match(player_id, mode, 'MEDIUM')
+    result['inQueue'] = True
+    return jsonify(result)
+
+
+# === MULTIPLAYER GAME STATE API ===
+
+@app.route('/api/multiplayer/state', methods=['POST'])
+def update_multiplayer_state():
+    """Update multiplayer game state."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    data = request.get_json() or {}
+    room_code = data.get('roomCode')
+    player_id = data.get('playerId')
+    state = data.get('state')
+
+    if not room_code or not state:
+        return jsonify({'error': 'Missing roomCode or state'}), 400
+
+    redis_client.set_multiplayer_state(room_code, state)
+    return jsonify({'success': True})
+
+
+@app.route('/api/multiplayer/state/<room_code>', methods=['GET'])
+def get_multiplayer_state(room_code):
+    """Get multiplayer game state."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    state = redis_client.get_multiplayer_state(room_code.upper())
+    room = redis_client.get_room(room_code.upper())
+
+    return jsonify({
+        'room': room,
+        'state': state
+    })
+
+
+@app.route('/api/multiplayer/end', methods=['POST'])
+def end_multiplayer_game():
+    """End a multiplayer game."""
+    if not USE_REDIS:
+        return jsonify({'error': 'Multiplayer not available'}), 503
+
+    data = request.get_json() or {}
+    room_code = data.get('roomCode')
+    winner_id = data.get('winnerId')
+
+    if not room_code:
+        return jsonify({'error': 'Missing roomCode'}), 400
+
+    redis_client.end_room_game(room_code.upper(), winner_id)
+    redis_client.delete_multiplayer_state(room_code.upper())
+
+    return jsonify({'success': True})
+
+
 # Initialize scheduler when running with gunicorn
 backup_scheduler = None
 
@@ -1087,12 +1360,18 @@ if __name__ == '__main__':
     print(f"Leaderboard file: {LEADERBOARD_FILE}")
     print(f"Redis enabled: {USE_REDIS}")
     print(f"PostgreSQL enabled: {USE_POSTGRES}")
+    print(f"WebSocket enabled: {USE_WEBSOCKET}")
 
     # Start backup scheduler
     backup_scheduler = init_backup_scheduler()
 
     print("Starting server on http://0.0.0.0:8080")
-    app.run(host='0.0.0.0', port=8080, debug=True, threaded=True)
+
+    # Use SocketIO if available for WebSocket support
+    if USE_WEBSOCKET and socketio:
+        socketio.run(app, host='0.0.0.0', port=8080, debug=True)
+    else:
+        app.run(host='0.0.0.0', port=8080, debug=True, threaded=True)
 else:
-    # Running under gunicorn - start scheduler
+    # Running under gunicorn/eventlet - start scheduler
     backup_scheduler = init_backup_scheduler()
