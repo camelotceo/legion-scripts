@@ -441,7 +441,9 @@ def find_match(player_id: str, mode: str, difficulty: str) -> dict:
 
             # Create room for them
             room_code = create_room(data['id'], data['name'], mode, difficulty)
-            join_room(room_code, player_id, get_player(player_id).get('name', 'Player'))
+            player_data = get_player(player_id)
+            player_name = player_data.get('name', 'Player') if player_data else 'Player'
+            join_room(room_code, player_id, player_name)
 
             return {
                 'matched': True,
