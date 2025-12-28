@@ -663,10 +663,10 @@
                 <div id="continueKeySection">
                     <div class="modal-section">
                         <label>Enter Your Continue Key</label>
-                        <input type="text" id="continueKeyInput" maxlength="9" placeholder="FJ-XXXXXX" style="text-transform: uppercase; font-family: monospace; letter-spacing: 2px; text-align: center; font-size: 18px;">
+                        <input type="text" id="continueKeyInput" maxlength="12" placeholder="FJ-XXXXXXXXX" style="text-transform: uppercase; font-family: monospace; letter-spacing: 2px; text-align: center; font-size: 18px;">
                         <p id="continueKeyError" style="color: #ff6b6b; font-size: 12px; margin-top: 8px; display: none;"></p>
                     </div>
-                    <button class="modal-btn" onclick="validateContinueKey()">Validate Key</button>
+                    <button class="modal-btn" id="validateKeyBtn" onclick="validateContinueKey()">Validate Key</button>
                     <button class="btn-secondary" style="margin-top: 10px;" onclick="closeContinueModal()">Back</button>
                 </div>
                 <div id="continueDataSection" style="display: none;">
@@ -688,7 +688,7 @@
                             </div>
                         </div>
                     </div>
-                    <button class="modal-btn" onclick="startContinuedGame()">Continue Game</button>
+                    <button class="modal-btn" id="startContinueBtn" onclick="startContinuedGame()">Continue Game</button>
                     <button class="btn-secondary" style="margin-top: 10px;" onclick="closeContinueModal()">Back</button>
                 </div>
             </div>
@@ -900,14 +900,14 @@
                         <p style="color: #aaa; margin-bottom: 5px;">Your Continue Key:</p>
                         <span class="key-code" id="displayedKey">FJ-XXXXXX</span>
                     </div>
-                    <input type="text" class="key-input" id="respawnKeyInput" placeholder="FJ-XXXXXX" maxlength="9">
+                    <input type="text" class="key-input" id="respawnKeyInput" placeholder="FJ-XXXXXXXXX" maxlength="12">
                     <button class="btn-respawn" onclick="validateAndContinue()">Continue</button>
                 </div>
 
                 <!-- Returning player section (hidden initially) -->
                 <div id="returningPlayerSection" style="display: none;">
                     <p class="respawn-info">Welcome back! Enter your key to continue:</p>
-                    <input type="text" class="key-input" id="returningKeyInput" placeholder="FJ-XXXXXX" maxlength="9">
+                    <input type="text" class="key-input" id="returningKeyInput" placeholder="FJ-XXXXXXXXX" maxlength="12">
                     <button class="btn-respawn" onclick="validateReturningPlayer()">Resume Game</button>
                     <p id="keyError" class="error-msg" style="display: none;"></p>
                 </div>
@@ -3761,6 +3761,7 @@
         async function validateContinueKey() {
             const key = document.getElementById('continueKeyInput').value.trim().toUpperCase();
             const errorEl = document.getElementById('continueKeyError');
+            const btn = document.getElementById('validateKeyBtn');
 
             if (!key) {
                 errorEl.textContent = 'Please enter a continue key';
@@ -3768,14 +3769,16 @@
                 return;
             }
 
-            // Basic format validation (FJ-XXXXXX)
-            if (!key.match(/^FJ-[A-Z0-9]{6}$/)) {
-                errorEl.textContent = 'Invalid key format. Keys should be like FJ-ABC123.';
+            // Accept both old 6-char keys (FJ-XXXXXX) and new 9-char keys (FJ-XXXXXXXXX)
+            if (!key.match(/^FJ-[A-Z0-9]{6,9}$/)) {
+                errorEl.textContent = 'Invalid key format. Keys should be like FJ-XXXXXXXXX';
                 errorEl.style.display = 'block';
                 return;
             }
 
             errorEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Validating...';
 
             try {
                 const response = await fetch(`${API_BASE}/api/player/validate-key`, {
@@ -3813,11 +3816,20 @@
             } catch (e) {
                 errorEl.textContent = 'Network error. Please try again.';
                 errorEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Validate Key';
             }
         }
 
         async function startContinuedGame() {
             if (!continueGameData) return;
+
+            // Disable button to prevent double-clicks
+            const btn = document.getElementById('startContinueBtn');
+            if (btn.disabled) return;
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
 
             if (audioContext.state === 'suspended') await audioContext.resume();
             closeContinueModal();
@@ -3878,15 +3890,25 @@
             if (isMobile) {
                 document.getElementById('touchControls').classList.add('show');
             }
-            await leaveAsPlayer();
-            await joinAsPlayer();
-            await startGameSession();
+
+            // Run network calls in parallel (non-blocking for game start)
+            Promise.all([
+                leaveAsPlayer().catch(() => {}),
+                joinAsPlayer().catch(() => {}),
+                startGameSession().catch(() => {})
+            ]).then(() => {
+                reportAction('continued_game', { level, score });
+            });
+
             document.getElementById('onlinePlayersBar').classList.add('show');
             document.getElementById('chatBar').classList.add('show');
             startPlayerPolling();
             startPlayerCommentPolling();
             updatePlayerStatus('playing');
-            reportAction('continued_game', { level, score });
+
+            // Reset button state
+            btn.disabled = false;
+            btn.textContent = 'Continue Game';
         }
 
         function openInstructionsModal() {
@@ -4049,9 +4071,9 @@
                 return;
             }
 
-            // Basic format validation (FJ-XXXXXX)
-            if (!key.match(/^FJ-[A-Z0-9]{6}$/)) {
-                alert('Invalid key format. Keys should be like FJ-ABC123.');
+            // Accept both old 6-char keys and new 9-char keys
+            if (!key.match(/^FJ-[A-Z0-9]{6,9}$/)) {
+                alert('Invalid key format. Keys should be like FJ-XXXXXXXXX');
                 return;
             }
 
@@ -4090,9 +4112,9 @@
                 return;
             }
 
-            // Basic format validation (FJ-XXXXXX)
-            if (!key.match(/^FJ-[A-Z0-9]{6}$/)) {
-                errorEl.textContent = 'Invalid key format. Keys should be like FJ-ABC123.';
+            // Accept both old 6-char keys and new 9-char keys
+            if (!key.match(/^FJ-[A-Z0-9]{6,9}$/)) {
+                errorEl.textContent = 'Invalid key format. Keys should be like FJ-XXXXXXXXX';
                 errorEl.style.display = 'block';
                 return;
             }
