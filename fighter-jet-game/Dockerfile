@@ -12,11 +12,12 @@ COPY fighter-jet-game.html .
 COPY redis_client.py .
 COPY database.py .
 COPY backup.py .
+COPY websocket_handler.py .
 
 # Create data directory for persistent storage
 RUN mkdir -p /app/data
 
 EXPOSE 8080
 
-# Run with gunicorn for production
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "server:app"]
+# Run with gunicorn + eventlet for WebSocket support
+CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:8080", "server:app"]

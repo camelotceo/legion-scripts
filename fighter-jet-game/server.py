@@ -7,6 +7,10 @@ Uses Redis for real-time state and PostgreSQL for persistent data.
 Authentication: Session-based with device fingerprinting.
 """
 
+# Monkey-patch for eventlet (must be first!)
+import eventlet
+eventlet.monkey_patch()
+
 import os
 import json
 import random
