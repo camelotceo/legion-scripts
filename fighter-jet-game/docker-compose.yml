@@ -7,6 +7,7 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://fighter:${DB_PASSWORD}@postgres:5432/fighter_jet
     volumes:
       - ./data:/app/data
       - ./fighter-jet-game.html:/app/fighter-jet-game.html:ro
@@ -14,6 +15,7 @@ services:
       - proxy-network
     depends_on:
       - redis
+      - postgres
     expose:
       - "8080"
 
@@ -26,9 +28,24 @@ services:
     volumes:
       - redis_data:/data
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: fighter-jet-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fighter_jet
+      POSTGRES_USER: fighter
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    networks:
+      - proxy-network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+
 networks:
   proxy-network:
     external: true
 
 volumes:
   redis_data:
+  postgres_data:

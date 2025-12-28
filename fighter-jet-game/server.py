@@ -3,6 +3,8 @@
 Flask server for Legion's Space Fight game.
 Serves static files, provides APIs for leaderboard, live players, and spectating.
 Uses Redis for real-time state and PostgreSQL for persistent data.
+
+Authentication: Session-based with device fingerprinting.
 """
 
 import os
@@ -11,7 +13,9 @@ import random
 import string
 import time
 import hashlib
-from flask import Flask, request, jsonify, send_from_directory
+import re
+from functools import wraps
+from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
 from pathlib import Path
 from datetime import datetime
@@ -98,6 +102,135 @@ def generate_handle():
     return f"Player_{suffix}"
 
 
+# === AUTHENTICATION HELPERS ===
+
+def get_client_ip():
+    """Get client IP, handling proxies."""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr
+
+
+def get_device_fingerprint():
+    """Get device fingerprint from request."""
+    # Use custom header if provided, otherwise generate from request
+    fingerprint = request.headers.get('X-Device-Fingerprint')
+    if fingerprint:
+        return fingerprint
+
+    # Generate from available headers
+    if USE_POSTGRES:
+        return database.generate_device_fingerprint(
+            get_client_ip(),
+            request.headers.get('User-Agent', ''),
+            request.headers.get('Accept-Language', '')
+        )
+    return None
+
+
+def get_session_token():
+    """Extract session token from Authorization header."""
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        return auth_header[7:]
+    return None
+
+
+def validate_username(username):
+    """Validate username format."""
+    if not username or len(username) < 1 or len(username) > 12:
+        return False
+    return bool(re.match(r'^[a-zA-Z0-9_]+$', username))
+
+
+def require_auth(f):
+    """Decorator to require valid session."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = get_session_token()
+
+        if not token:
+            return jsonify({'error': 'No authorization token'}), 401
+
+        if not USE_POSTGRES:
+            # Fallback: trust the token as player_id for non-DB mode
+            g.player_id = token
+            g.session = {'player_id': token}
+            return f(*args, **kwargs)
+
+        session = database.validate_session(token)
+        if not session:
+            return jsonify({'error': 'Invalid or expired session'}), 401
+
+        if session.get('is_banned'):
+            return jsonify({
+                'error': 'Account suspended',
+                'reason': session.get('ban_reason')
+            }), 403
+
+        g.session = session
+        g.player_id = session['player_id']
+        g.username = session['username']
+
+        return f(*args, **kwargs)
+    return decorated
+
+
+def optional_auth(f):
+    """Decorator for optional authentication."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = get_session_token()
+        g.session = None
+        g.player_id = None
+
+        if token and USE_POSTGRES:
+            session = database.validate_session(token)
+            if session and not session.get('is_banned'):
+                g.session = session
+                g.player_id = session['player_id']
+                g.username = session.get('username')
+
+        return f(*args, **kwargs)
+    return decorated
+
+
+def rate_limit(action, by='ip'):
+    """Decorator for rate limiting."""
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not USE_POSTGRES:
+                return f(*args, **kwargs)
+
+            # Determine identifier
+            if by == 'ip':
+                identifier_type = 'ip'
+                identifier_value = get_client_ip()
+            elif by == 'session':
+                token = get_session_token()
+                if token:
+                    identifier_type = 'session'
+                    identifier_value = database.hash_token(token)[:32]
+                else:
+                    identifier_type = 'ip'
+                    identifier_value = get_client_ip()
+            else:
+                identifier_type = 'ip'
+                identifier_value = get_client_ip()
+
+            if not database.check_rate_limit(identifier_type, identifier_value, action):
+                status = database.get_rate_limit_status(identifier_type, identifier_value, action)
+                return jsonify({
+                    'error': 'Too many requests',
+                    'retry_after': status.get('reset_at')
+                }), 429
+
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
 # === FALLBACK FUNCTIONS (when Redis/Postgres not available) ===
 
 def cleanup_stale_players():
@@ -156,6 +289,514 @@ def index():
 def serve_game():
     """Serve the game file directly."""
     return send_from_directory(BASE_DIR, 'fighter-jet-game.html')
+
+
+# === AUTHENTICATION API ===
+
+@app.route('/api/auth/register', methods=['POST'])
+@rate_limit('player_join', by='ip')
+def auth_register():
+    """Register a new player or get existing session.
+
+    Creates a player with username + device fingerprint.
+    Returns a session token for future requests.
+    """
+    data = request.get_json() or {}
+
+    username = str(data.get('username', '')).strip()
+    display_name = str(data.get('displayName', username)).strip()[:12]
+
+    # Generate username if not provided
+    if not username:
+        username = generate_handle()
+        display_name = username
+    else:
+        username = username[:12]
+        # Validate username format
+        if not validate_username(username):
+            return jsonify({
+                'error': 'Invalid username. Use only letters, numbers, and underscores.'
+            }), 400
+
+    if not USE_POSTGRES:
+        # Fallback mode - just generate a player ID
+        player_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        return jsonify({
+            'success': True,
+            'playerId': player_id,
+            'username': username,
+            'displayName': display_name,
+            'token': player_id,
+            'isNew': True
+        })
+
+    ip_address = get_client_ip()
+    fingerprint = get_device_fingerprint()
+    user_agent = request.headers.get('User-Agent', '')
+
+    try:
+        # Check if username exists
+        existing = database.get_player_by_username(username)
+
+        if existing:
+            # Username taken - check if same device
+            if fingerprint and existing.get('device_fingerprint') == fingerprint:
+                # Same device - create new session
+                session = database.create_session(
+                    str(existing['id']), ip_address, user_agent, fingerprint
+                )
+                database.update_player_last_seen(str(existing['id']), ip_address)
+
+                return jsonify({
+                    'success': True,
+                    'playerId': str(existing['id']),
+                    'username': existing['username'],
+                    'displayName': existing['display_name'],
+                    'token': session['token'],
+                    'expiresAt': session['expires_at'],
+                    'isNew': False,
+                    'emailVerified': existing.get('email_verified', False)
+                })
+            else:
+                # Different device - username taken
+                return jsonify({
+                    'error': 'Username already taken',
+                    'suggestion': generate_handle()
+                }), 409
+
+        # Create new player
+        player = database.create_player(
+            username=username,
+            display_name=display_name or username,
+            device_fingerprint=fingerprint,
+            ip_address=ip_address
+        )
+
+        # Create session
+        session = database.create_session(
+            str(player['id']), ip_address, user_agent, fingerprint
+        )
+
+        # Track IP
+        database.track_ip(ip_address, str(player['id']))
+
+        # Audit log
+        database.log_audit(
+            action='player_registered',
+            player_id=str(player['id']),
+            ip_address=ip_address,
+            new_value={'username': username}
+        )
+
+        return jsonify({
+            'success': True,
+            'playerId': str(player['id']),
+            'username': player['username'],
+            'displayName': player['display_name'],
+            'token': session['token'],
+            'expiresAt': session['expires_at'],
+            'isNew': True
+        })
+
+    except Exception as e:
+        print(f"Registration error: {e}")
+        return jsonify({'error': 'Registration failed'}), 500
+
+
+@app.route('/api/auth/login', methods=['POST'])
+@rate_limit('player_join', by='ip')
+def auth_login():
+    """Login with existing session token or username + device fingerprint."""
+    data = request.get_json() or {}
+
+    # Option 1: Login with existing token
+    token = data.get('token') or get_session_token()
+    if token and USE_POSTGRES:
+        session = database.validate_session(token)
+        if session:
+            return jsonify({
+                'success': True,
+                'playerId': session['player_id'],
+                'username': session['username'],
+                'displayName': session['display_name'],
+                'token': token,
+                'emailVerified': session.get('email_verified', False)
+            })
+
+    # Option 2: Login with username + fingerprint
+    username = str(data.get('username', '')).strip()[:12].lower()
+    fingerprint = get_device_fingerprint()
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Login not available'}), 503
+
+    if username:
+        player = database.get_player_by_username(username)
+        if player and fingerprint and player.get('device_fingerprint') == fingerprint:
+            ip_address = get_client_ip()
+            session = database.create_session(
+                str(player['id']), ip_address,
+                request.headers.get('User-Agent', ''), fingerprint
+            )
+            return jsonify({
+                'success': True,
+                'playerId': str(player['id']),
+                'username': player['username'],
+                'displayName': player['display_name'],
+                'token': session['token'],
+                'expiresAt': session['expires_at'],
+                'emailVerified': player.get('email_verified', False)
+            })
+
+    return jsonify({'error': 'Invalid credentials'}), 401
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+@require_auth
+def auth_logout():
+    """Logout and revoke session."""
+    token = get_session_token()
+
+    if USE_POSTGRES and g.session:
+        database.revoke_session(g.session['session_id'], 'user_logout')
+        database.log_audit(
+            action='logout',
+            player_id=g.player_id,
+            session_id=g.session['session_id'],
+            ip_address=get_client_ip()
+        )
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/auth/verify-email', methods=['POST'])
+def auth_verify_email():
+    """Verify email with token."""
+    data = request.get_json() or {}
+    token = data.get('token')
+
+    if not token:
+        return jsonify({'error': 'Token required'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    result = database.verify_player_email(token)
+    if result:
+        return jsonify({
+            'success': True,
+            'username': result['username'],
+            'email': result['email']
+        })
+
+    return jsonify({'error': 'Invalid or expired token'}), 400
+
+
+@app.route('/api/auth/set-email', methods=['POST'])
+@require_auth
+def auth_set_email():
+    """Set email for current player (sends verification)."""
+    data = request.get_json() or {}
+    email = str(data.get('email', '')).strip()[:100].lower()
+
+    if not email or '@' not in email:
+        return jsonify({'error': 'Valid email required'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    if database.set_player_email(g.player_id, email):
+        # TODO: Send verification email
+        return jsonify({'success': True, 'message': 'Verification email sent'})
+
+    return jsonify({'error': 'Email already in use'}), 409
+
+
+@app.route('/api/auth/check-username', methods=['GET'])
+def auth_check_username():
+    """Check if a username is available."""
+    username = request.args.get('username', '').strip()[:12]
+
+    if not validate_username(username):
+        return jsonify({'available': False, 'error': 'Invalid format'})
+
+    if not USE_POSTGRES:
+        return jsonify({'available': True})
+
+    available = database.is_username_available(username)
+    return jsonify({'available': available})
+
+
+@app.route('/api/auth/request-login-link', methods=['POST'])
+@rate_limit('request_login', by='ip')
+def auth_request_login_link():
+    """Request a login link via email.
+
+    Allows players to log in on a new device by verifying email ownership.
+    Rate limited to prevent abuse.
+    """
+    data = request.get_json() or {}
+    email = str(data.get('email', '')).strip()[:100].lower()
+
+    if not email or '@' not in email:
+        return jsonify({'error': 'Valid email required'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    # Find player by email
+    player = database.get_player_by_email(email)
+    if not player:
+        # Don't reveal whether email exists - just say "sent"
+        return jsonify({
+            'success': True,
+            'message': 'If an account exists with this email, a login link has been sent.'
+        })
+
+    if player.get('is_banned'):
+        return jsonify({'error': 'Account suspended'}), 403
+
+    # Create login token
+    ip_address = get_client_ip()
+    token_data = database.create_email_login_token(
+        player_id=str(player['id']),
+        ip_address=ip_address,
+        expires_minutes=15
+    )
+
+    # Send email with login link
+    login_link = f"{request.url_root}?login_token={token_data['token']}"
+
+    if USE_RESEND:
+        try:
+            resend.Emails.send({
+                "from": "Fighter Jet Game <games@felican.ai>",
+                "to": [email],
+                "subject": "Your Login Link",
+                "html": f"""
+                <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #1a1a2e; color: #fff; padding: 30px; border-radius: 15px;">
+                    <h1 style="color: #ffd700; text-align: center;">🎮 Fighter Jet Game</h1>
+                    <h2 style="color: #4ade80; text-align: center;">Login Link</h2>
+                    <p style="text-align: center; color: #aaa;">Click the button below to log in as <strong>{player['username']}</strong></p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="{login_link}" style="background: linear-gradient(135deg, #4ade80, #22c55e); color: #000; padding: 15px 30px; border-radius: 25px; text-decoration: none; font-weight: bold; font-size: 16px;">Log In Now</a>
+                    </div>
+                    <p style="color: #888; font-size: 12px; text-align: center;">
+                        Or copy this code: <strong style="color: #4ade80;">{token_data['token'][:8]}...</strong><br>
+                        This link expires in 15 minutes.
+                    </p>
+                    <hr style="border-color: #333; margin: 20px 0;">
+                    <p style="color: #666; font-size: 11px; text-align: center;">
+                        If you didn't request this, you can safely ignore this email.
+                    </p>
+                </div>
+                """
+            })
+        except Exception as e:
+            print(f"Failed to send login email: {e}")
+
+    # Audit log
+    database.log_audit(
+        action='login_link_requested',
+        player_id=str(player['id']),
+        ip_address=ip_address,
+        new_value={'email': email}
+    )
+
+    return jsonify({
+        'success': True,
+        'message': 'If an account exists with this email, a login link has been sent.'
+    })
+
+
+@app.route('/api/auth/verify-login-link', methods=['POST'])
+@rate_limit('verify_login', by='ip')
+def auth_verify_login_link():
+    """Verify a login link token and create a session.
+
+    This allows logging in on a new device. The device fingerprint
+    is updated to link the new device to the account.
+    """
+    data = request.get_json() or {}
+    token = str(data.get('token', '')).strip()
+
+    if not token:
+        return jsonify({'error': 'Token required'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    ip_address = get_client_ip()
+    fingerprint = get_device_fingerprint()
+    user_agent = request.headers.get('User-Agent', '')
+
+    result = database.verify_email_login_token(
+        token=token,
+        ip_address=ip_address,
+        device_fingerprint=fingerprint,
+        user_agent=user_agent
+    )
+
+    if not result:
+        database.log_audit(
+            action='login_link_failed',
+            ip_address=ip_address,
+            new_value={'token_prefix': token[:8]}
+        )
+        return jsonify({'error': 'Invalid or expired login link'}), 401
+
+    # Audit log
+    database.log_audit(
+        action='login_link_verified',
+        player_id=result['player_id'],
+        ip_address=ip_address,
+        new_value={'device_fingerprint': fingerprint}
+    )
+
+    return jsonify({
+        'success': True,
+        'playerId': result['player_id'],
+        'username': result['username'],
+        'displayName': result['display_name'],
+        'email': result['email'],
+        'token': result['token'],
+        'expiresAt': result['expires_at']
+    })
+
+
+# === GAME SESSION API ===
+
+@app.route('/api/game/start', methods=['POST'])
+@require_auth
+def game_start():
+    """Start a new game session (server-side tracking)."""
+    data = request.get_json() or {}
+    difficulty = str(data.get('difficulty', 'EASY'))[:10].upper()
+    game_mode = data.get('mode', 'single')
+    room_code = data.get('roomCode')
+
+    if difficulty not in VALID_DIFFICULTIES:
+        difficulty = 'EASY'
+
+    if not USE_POSTGRES:
+        # Fallback: generate random session ID
+        session_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=16))
+        return jsonify({'success': True, 'gameSessionId': session_id})
+
+    try:
+        game_session_id = database.create_game_session(
+            player_id=g.player_id,
+            player_session_id=g.session['session_id'],
+            difficulty=difficulty,
+            game_mode=game_mode,
+            room_code=room_code,
+            client_ip=get_client_ip()
+        )
+
+        return jsonify({
+            'success': True,
+            'gameSessionId': game_session_id
+        })
+    except Exception as e:
+        print(f"Error starting game: {e}")
+        return jsonify({'error': 'Failed to start game'}), 500
+
+
+@app.route('/api/game/event', methods=['POST'])
+@require_auth
+@rate_limit('game_event', by='session')
+def game_event():
+    """Report a game event (for score validation)."""
+    data = request.get_json() or {}
+
+    game_session_id = data.get('gameSessionId')
+    event_type = data.get('type')
+    game_timestamp = int(data.get('timestamp', 0))
+    level = int(data.get('level', 1))
+    position_x = data.get('x')
+    position_y = data.get('y')
+    details = data.get('details')
+
+    if not game_session_id or not event_type:
+        return jsonify({'error': 'Missing gameSessionId or type'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({'success': True, 'scoreDelta': 0, 'runningScore': 0})
+
+    try:
+        result = database.log_game_event(
+            game_session_id=game_session_id,
+            event_type=event_type,
+            game_timestamp=game_timestamp,
+            level=level,
+            position_x=position_x,
+            position_y=position_y,
+            details=details
+        )
+
+        return jsonify({
+            'success': True,
+            'scoreDelta': result['score_delta'],
+            'runningScore': result['running_score']
+        })
+    except Exception as e:
+        print(f"Error logging event: {e}")
+        return jsonify({'error': 'Failed to log event'}), 500
+
+
+@app.route('/api/game/end', methods=['POST'])
+@require_auth
+def game_end():
+    """End a game session with validation."""
+    data = request.get_json() or {}
+
+    game_session_id = data.get('gameSessionId')
+    client_score = int(data.get('score', 0))
+    level = int(data.get('level', 1))
+    duration = int(data.get('duration', 0))
+    death_reason = data.get('deathReason', 'unknown')
+    bosses_defeated = int(data.get('bossesDefeated', 0))
+    enemies_killed = int(data.get('enemiesKilled', 0))
+    is_victory = data.get('isVictory', False)
+
+    if not game_session_id:
+        return jsonify({'error': 'Missing gameSessionId'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({
+            'success': True,
+            'finalScore': client_score,
+            'isValidated': True
+        })
+
+    try:
+        result = database.end_game_session(
+            game_session_id=game_session_id,
+            client_score=client_score,
+            level=level,
+            duration=duration,
+            death_reason=death_reason,
+            bosses_defeated=bosses_defeated,
+            enemies_killed=enemies_killed,
+            is_victory=is_victory
+        )
+
+        # Add to leaderboard if validated
+        leaderboard_entry = None
+        if result['is_validated'] and result['final_score'] > 0:
+            leaderboard_entry = database.add_leaderboard_entry(game_session_id)
+
+        return jsonify({
+            'success': True,
+            'finalScore': result['final_score'],
+            'serverScore': result['server_score'],
+            'isValidated': result['is_validated'],
+            'discrepancy': result['discrepancy'],
+            'leaderboardEntry': leaderboard_entry
+        })
+    except Exception as e:
+        print(f"Error ending game: {e}")
+        return jsonify({'error': 'Failed to end game'}), 500
 
 
 # === LEADERBOARD API ===
@@ -790,8 +1431,8 @@ def save_player_progress(data):
     with open(PLAYER_PROGRESS_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-def generate_continue_key():
-    """Generate a unique 8-character continue key."""
+def generate_continue_key_legacy():
+    """Generate a unique 8-character continue key (legacy 6-char format for JSON fallback)."""
     chars = string.ascii_uppercase + string.digits
     # Remove ambiguous characters
     chars = chars.replace('O', '').replace('0', '').replace('I', '').replace('1', '').replace('L', '')
@@ -860,8 +1501,12 @@ def check_player_name():
 
 
 @app.route('/api/player/request-key', methods=['POST'])
+@rate_limit('request_key', by='ip')
 def request_continue_key():
-    """Request a continue key - generates key and sends email."""
+    """Request a continue key - generates key and sends email.
+
+    Uses database for secure key storage if available, falls back to JSON.
+    """
     data = request.get_json() or {}
     name = str(data.get('name', '')).strip()[:12].lower()
     email = str(data.get('email', '')).strip()[:100]
@@ -874,10 +1519,62 @@ def request_continue_key():
     if not email or '@' not in email:
         return jsonify({'error': 'Valid email required'}), 400
 
+    # Try database first
+    if USE_POSTGRES:
+        try:
+            # Get or create player
+            player = database.get_player_by_username(name)
+            if not player:
+                # Create player if doesn't exist
+                fingerprint = get_device_fingerprint()
+                player = database.create_player(
+                    username=name,
+                    display_name=name,
+                    device_fingerprint=fingerprint,
+                    ip_address=get_client_ip(),
+                    email=email
+                )
+            else:
+                # Update email if not set
+                if not player.get('email'):
+                    database.set_player_email(str(player['id']), email)
+
+            # Generate secure continue key (12 chars now)
+            key_data = database.create_continue_key(
+                player_id=str(player['id']),
+                level=level,
+                score=score,
+                difficulty=difficulty,
+                ip_address=get_client_ip()
+            )
+
+            # Send email with the 12-char key
+            email_sent = send_continue_key_email(email, key_data['key'], name, level)
+
+            # Audit log
+            database.log_audit(
+                action='continue_key_requested',
+                player_id=str(player['id']),
+                ip_address=get_client_ip(),
+                new_value={'level': level, 'score': score}
+            )
+
+            return jsonify({
+                'success': True,
+                'key': key_data['key'],
+                'emailSent': email_sent,
+                'respawnsRemaining': 3
+            })
+
+        except Exception as e:
+            print(f"Database error requesting key: {e}")
+            # Fall through to JSON fallback
+
+    # Fallback to JSON storage
     progress = load_player_progress()
 
-    # Generate new key
-    key = generate_continue_key()
+    # Generate new key (old 6-char format for fallback)
+    key = generate_continue_key_legacy()
 
     # Store player progress
     if name not in progress:
@@ -887,7 +1584,7 @@ def request_continue_key():
             'currentLevel': level,
             'currentScore': score,
             'difficulty': difficulty,
-            'respawnsUsed': {},  # Per level: {1: 2, 2: 1, ...}
+            'respawnsUsed': {},
             'totalRespawns': 0,
             'keyRequests': 0,
             'history': [],
@@ -904,7 +1601,8 @@ def request_continue_key():
         'key': key,
         'level': level,
         'createdAt': datetime.now().isoformat(),
-        'used': False
+        'used': False,
+        'respawnsRemaining': 3
     })
     player['keyRequests'] += 1
     player['history'].append({
@@ -914,7 +1612,6 @@ def request_continue_key():
         'timestamp': datetime.now().isoformat()
     })
 
-    # Reset respawns for this level (they get 3 more)
     player['respawnsUsed'][str(level)] = 0
 
     save_player_progress(progress)
@@ -931,10 +1628,12 @@ def request_continue_key():
 
 
 @app.route('/api/player/validate-key', methods=['POST'])
+@rate_limit('validate_key', by='ip')
 def validate_continue_key():
     """Validate a continue key and return player progress.
 
-    Key can be validated with just the key (searches all players) or with name+key.
+    Uses database for secure key validation if available, falls back to JSON.
+    Rate limited to 10 attempts per 15 min per IP.
     """
     data = request.get_json() or {}
     name = str(data.get('name', '')).strip()[:12].lower() if data.get('name') else None
@@ -943,6 +1642,48 @@ def validate_continue_key():
     if not key:
         return jsonify({'error': 'Key required'}), 400
 
+    ip_address = get_client_ip()
+
+    # Try database first
+    if USE_POSTGRES:
+        try:
+            result = database.validate_continue_key(key, ip_address)
+
+            if result is None:
+                # Key not found or expired or locked
+                database.log_audit(
+                    action='continue_key_failed',
+                    ip_address=ip_address,
+                    new_value={'key_prefix': key[:6] if len(key) >= 6 else key}
+                )
+                return jsonify({'valid': False, 'error': 'Invalid or expired key'}), 401
+
+            if result.get('error'):
+                return jsonify({'valid': False, 'error': result['error']}), 401
+
+            # Log successful validation
+            database.log_audit(
+                action='continue_key_validated',
+                player_id=result.get('player_id'),
+                ip_address=ip_address,
+                new_value={'level': result['level'], 'respawns_left': result['respawns_remaining']}
+            )
+
+            return jsonify({
+                'valid': True,
+                'name': result['username'],
+                'level': result['level'],
+                'score': result['score'],
+                'difficulty': result['difficulty'],
+                'respawnsRemaining': result['respawns_remaining'],
+                'keyRespawnsLeft': result['respawns_remaining']
+            })
+
+        except Exception as e:
+            print(f"Database error validating key: {e}")
+            # Fall through to JSON fallback
+
+    # Fallback to JSON storage
     progress = load_player_progress()
 
     # If name provided, look up that specific player

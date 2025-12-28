@@ -1033,8 +1033,143 @@
         let backgroundMusic = null;
         let isMuted = false;
 
-        // === LEADERBOARD SYSTEM (Server-side JSON) ===
+        // === SESSION & AUTH MANAGEMENT ===
         const API_BASE = window.location.origin;
+        let sessionToken = localStorage.getItem('sessionToken');
+        let deviceFingerprint = localStorage.getItem('deviceFingerprint');
+        let currentGameSessionId = null;
+        let gameEventQueue = [];
+        let lastEventTime = 0;
+
+        // Generate device fingerprint if not exists
+        function generateDeviceFingerprint() {
+            if (deviceFingerprint) return deviceFingerprint;
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.textBaseline = 'top';
+            ctx.font = '14px Arial';
+            ctx.fillText('fingerprint', 2, 2);
+            const canvasData = canvas.toDataURL();
+            const data = [
+                navigator.userAgent,
+                navigator.language,
+                screen.width + 'x' + screen.height,
+                new Date().getTimezoneOffset(),
+                canvasData.substring(0, 50)
+            ].join('|');
+            // Simple hash
+            let hash = 0;
+            for (let i = 0; i < data.length; i++) {
+                const char = data.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            deviceFingerprint = Math.abs(hash).toString(36) + Date.now().toString(36);
+            localStorage.setItem('deviceFingerprint', deviceFingerprint);
+            return deviceFingerprint;
+        }
+        generateDeviceFingerprint();
+
+        // Authenticated fetch wrapper
+        async function authFetch(url, options = {}) {
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(options.headers || {})
+            };
+            if (sessionToken) {
+                headers['Authorization'] = `Bearer ${sessionToken}`;
+            }
+            if (deviceFingerprint) {
+                headers['X-Device-Fingerprint'] = deviceFingerprint;
+            }
+            return fetch(url, { ...options, headers });
+        }
+
+        // Game event reporting (batched)
+        function reportGameEvent(eventType, details = {}) {
+            if (!currentGameSessionId) return;
+            const now = Date.now();
+            gameEventQueue.push({
+                gameSessionId: currentGameSessionId,
+                type: eventType,
+                timestamp: now - (gameStartTime || now),
+                level: level,
+                x: player ? player.x : 0,
+                y: player ? player.y : 0,
+                details
+            });
+            // Send batch every 500ms
+            if (now - lastEventTime > 500 && gameEventQueue.length > 0) {
+                sendEventBatch();
+                lastEventTime = now;
+            }
+        }
+
+        async function sendEventBatch() {
+            if (gameEventQueue.length === 0) return;
+            const events = [...gameEventQueue];
+            gameEventQueue = [];
+            for (const event of events) {
+                try {
+                    await authFetch(`${API_BASE}/api/game/event`, {
+                        method: 'POST',
+                        body: JSON.stringify(event)
+                    });
+                } catch (e) {
+                    console.error('Failed to send game event:', e);
+                }
+            }
+        }
+
+        // Start game session with server
+        async function startServerGameSession() {
+            if (!sessionToken) return null;
+            try {
+                const response = await authFetch(`${API_BASE}/api/game/start`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        difficulty: selectedDifficulty.toUpperCase(),
+                        mode: isMultiplayer ? (coopMode ? 'coop' : 'versus') : 'single',
+                        roomCode: currentRoomCode || null
+                    })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    currentGameSessionId = data.gameSessionId;
+                    return currentGameSessionId;
+                }
+            } catch (e) {
+                console.error('Failed to start server game session:', e);
+            }
+            return null;
+        }
+
+        // End game session with server
+        async function endServerGameSession(deathReason = 'unknown', isVictory = false) {
+            if (!currentGameSessionId || !sessionToken) return;
+            // Flush remaining events
+            await sendEventBatch();
+            try {
+                await authFetch(`${API_BASE}/api/game/end`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        gameSessionId: currentGameSessionId,
+                        score: score,
+                        level: level,
+                        duration: gameDuration,
+                        deathReason: deathReason,
+                        bossesDefeated: bossDefeated ? bossDefeated.length : 0,
+                        enemiesKilled: totalEnemiesKilled || 0,
+                        isVictory: isVictory
+                    })
+                });
+            } catch (e) {
+                console.error('Failed to end server game session:', e);
+            }
+            currentGameSessionId = null;
+        }
+
+        // === LEADERBOARD SYSTEM (Server-side JSON) ===
         const MAX_LEADERBOARD_SIZE = 10;
         let cachedLeaderboard = [];
         let allLeaderboards = { EASY: [], MEDIUM: [], HARD: [], EXPERT: [] };
@@ -1204,28 +1339,81 @@
             const enteredName = nameInput ? nameInput.value.trim() : '';
             const nameToUse = enteredName || localStorage.getItem('playerName') || '';
 
+            // Try to authenticate/register with new auth system
+            try {
+                // First try to login with existing token
+                if (sessionToken) {
+                    const loginResponse = await authFetch(`${API_BASE}/api/auth/login`, {
+                        method: 'POST',
+                        body: JSON.stringify({ token: sessionToken })
+                    });
+                    if (loginResponse.ok) {
+                        const data = await loginResponse.json();
+                        if (data.success) {
+                            myPlayerId = data.playerId;
+                            myPlayerName = data.username;
+                            savePlayerName(data.username);
+                            console.log('Logged in as:', myPlayerName);
+                        }
+                    }
+                }
+
+                // If no session yet, register new player
+                if (!myPlayerId && nameToUse) {
+                    const regResponse = await authFetch(`${API_BASE}/api/auth/register`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            username: nameToUse,
+                            displayName: nameToUse
+                        })
+                    });
+                    if (regResponse.ok) {
+                        const data = await regResponse.json();
+                        if (data.success) {
+                            sessionToken = data.token;
+                            localStorage.setItem('sessionToken', sessionToken);
+                            myPlayerId = data.playerId;
+                            myPlayerName = data.username;
+                            savePlayerName(data.username);
+                            console.log('Registered as:', myPlayerName, 'ID:', myPlayerId);
+                        }
+                    } else if (regResponse.status === 409) {
+                        // Username taken - show error
+                        const data = await regResponse.json();
+                        console.warn('Username taken:', data.error);
+                        if (data.suggestion && nameInput) {
+                            nameInput.value = data.suggestion;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Auth error:', e);
+            }
+
+            // Also register with live players system (for spectating)
             try {
                 const response = await fetch(`${API_BASE}/api/players/join`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        name: nameToUse,
+                        name: myPlayerName || nameToUse,
                         difficulty: selectedDifficulty.toUpperCase(),
                         color: selectedColor
                     })
                 });
                 if (response.ok) {
                     const data = await response.json();
-                    myPlayerId = data.playerId;
-                    myPlayerName = data.name;
-                    // Save the name (especially important for random names)
-                    savePlayerName(data.name);
+                    if (!myPlayerId) myPlayerId = data.playerId;
+                    if (!myPlayerName) {
+                        myPlayerName = data.name;
+                        savePlayerName(data.name);
+                    }
                     livePlayers = data.players || [];
                     console.log('Joined as:', myPlayerName, 'ID:', myPlayerId);
                     return true;
                 }
             } catch (e) { console.error('Failed to join as player:', e); }
-            return false;
+            return !!myPlayerId;
         }
 
         async function updatePlayerStatus(status) {
@@ -2025,8 +2213,53 @@
         }
 
 
+        // Handle email login link
+        async function handleLoginToken() {
+            const params = new URLSearchParams(window.location.search);
+            const loginToken = params.get('login_token');
+
+            if (!loginToken) return false;
+
+            // Clear token from URL (without reload)
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            try {
+                const response = await authFetch(`${API_BASE}/api/auth/verify-login-link`, {
+                    method: 'POST',
+                    body: JSON.stringify({ token: loginToken })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        sessionToken = data.token;
+                        localStorage.setItem('sessionToken', sessionToken);
+                        myPlayerId = data.playerId;
+                        myPlayerName = data.username;
+                        savePlayerName(data.username);
+
+                        // Update name input
+                        const nameInput = document.getElementById('playerNameInput');
+                        if (nameInput) nameInput.value = data.username;
+
+                        alert(`Welcome back, ${data.username}! You are now logged in on this device.`);
+                        return true;
+                    }
+                } else {
+                    const err = await response.json();
+                    alert('Login link expired or invalid. Please request a new one.');
+                }
+            } catch (e) {
+                console.error('Login link verification failed:', e);
+            }
+            return false;
+        }
+
         // Initialize leaderboard on page load
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Check for login token in URL first
+            await handleLoginToken();
+
             renderLeaderboard('startLeaderboardList');
             // Load saved player name from localStorage
             loadSavedPlayerName();
@@ -4359,6 +4592,9 @@
             stopBackgroundMusic();
             stopBossMusic();
 
+            // End server game session with victory flag
+            endServerGameSession('victory', true);
+
             // Update stats
             document.getElementById('victoryScore').textContent = score.toLocaleString();
             document.getElementById('victoryTime').textContent = formatDuration(gameDuration);
@@ -4834,6 +5070,8 @@
                 const defeatedLevel = level;
                 const wasSuper = boss.isSuper;
                 reportAction('defeated_boss', { bossLevel: defeatedLevel, isSuper: wasSuper });
+                // Report game event for server score validation
+                reportGameEvent('boss_defeated', { bossLevel: defeatedLevel, isSuper: wasSuper });
 
                 // Mark boss as defeated and advance level
                 bossDefeated.push(level);
@@ -6516,6 +6754,9 @@
             await leaveAsPlayer();
             await joinAsPlayer();
 
+            // Start server-side game session for score validation
+            await startServerGameSession();
+
             // Debug mode: 'ending123' shows victory screen immediately
             if (myPlayerName && myPlayerName.toLowerCase() === 'ending123') {
                 // Simulate beating all bosses
@@ -6555,6 +6796,8 @@
             if (gameStartTime) {
                 gameDuration = Math.floor((Date.now() - gameStartTime) / 1000);
             }
+            // End server game session
+            endServerGameSession(deathReason, false);
             // Clean up boss state
             const wasBossActive = bossActive;
             boss = null;
@@ -6642,6 +6885,8 @@
             gameRunning = false;
             gamePaused = false;
             laserActive = false;
+            // End server game session
+            endServerGameSession('quit', false);
             // Clean up boss state
             boss = null;
             bossActive = false;
