@@ -37,6 +37,74 @@
         #muteButton.muted { background: rgba(255, 100, 100, 0.3); border-color: rgba(255, 100, 100, 0.7); }
         #quitButton { background: rgba(255, 100, 100, 0.3); border-color: rgba(255, 100, 100, 0.7); margin-top: 5px; }
         #quitButton:hover { background: rgba(255, 100, 100, 0.5); }
+        /* Weapon Panel */
+        #weaponPanel {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 130px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            pointer-events: auto;
+            z-index: 50;
+        }
+        .weapon-slot {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #444;
+            padding: 6px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.15s ease;
+            font-size: 11px;
+        }
+        .weapon-slot:hover {
+            border-color: #00ffff;
+            background: rgba(0, 50, 80, 0.7);
+        }
+        .weapon-slot.active {
+            border-color: #00ff00;
+            background: rgba(0, 80, 0, 0.7);
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+        }
+        .weapon-slot.empty {
+            opacity: 0.4;
+            cursor: default;
+            border-color: #333;
+        }
+        .weapon-slot .weapon-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .weapon-slot .weapon-name {
+            color: #fff;
+            font-weight: bold;
+            font-size: 10px;
+        }
+        .weapon-slot .weapon-key {
+            color: #888;
+            font-size: 9px;
+        }
+        .weapon-slot .weapon-ammo {
+            color: #0ff;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: right;
+            margin-top: 2px;
+        }
+        .weapon-slot.active .weapon-ammo {
+            color: #0f0;
+        }
+        .weapon-slot.low-ammo .weapon-ammo {
+            color: #ff6600;
+        }
+        .weapon-slot.no-ammo .weapon-ammo {
+            color: #ff0000;
+        }
         #startScreen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -563,6 +631,8 @@
                 <span>Lives: <span id="lives">3</span></span>
             </div>
         </div>
+        <!-- Weapon Panel -->
+        <div id="weaponPanel"></div>
         <!-- Coop Mode HUD -->
         <div id="coopHud" style="display:none; position:absolute; top:10px; left:10px; right:10px; color:#fff; font-size:14px; text-shadow:2px 2px 4px rgba(0,0,0,0.5);">
             <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -2296,6 +2366,7 @@
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 850;
         let isInvincible = false; // Debug mode for unlimited lives
         let totalEnemiesKilled = 0; // Track for ending stats
+        let playerHitFlash = 0; // Flash timer when player takes damage (ms)
 
         // === RESPAWN SYSTEM ===
         const MAX_CONTINUES_PER_LEVEL = 3;
@@ -2348,6 +2419,20 @@
         const shieldDuration = 5000;
         const shieldMaxHits = 3;
         let shieldStartTime = 0;
+
+        // === ELECTRIC FENCES ===
+        let electricFences = [];
+        let fenceSpawnAccumulator = 0;
+
+        // === PLAYER BOMBS ===
+        let playerBombs = 3; // Start with 3 bombs
+        let lastPlayerBombTime = 0;
+        const PLAYER_BOMB_COOLDOWN = 2000; // 2 second cooldown
+
+        // === NEW BOSS WEAPONS ===
+        let horizonBeams = []; // Full-width beams with gaps
+        let magneticMines = []; // Mines that are attracted to player
+        let mirrorDrones = []; // Drones that mirror player movement
 
         // === BOSS SYSTEM ===
         let boss = null;
@@ -2476,11 +2561,27 @@
             pistol: { name: 'PISTOL', fireRate: 150, color: '#00ffff' },
             machinegun: { name: 'MACHINE GUN', fireRate: 50, color: '#ffff00' },
             bazooka: { name: 'BAZOOKA', fireRate: 500, color: '#ff6600' },
-            laser: { name: 'LASER BEAM', fireRate: 30, color: '#ff00ff' }
+            laser: { name: 'LASER BEAM', fireRate: 30, color: '#ff00ff' },
+            flak: { name: 'FLAK CANNON', fireRate: 600, color: '#ff8800' },
+            disc: { name: 'DISC LAUNCHER', fireRate: 400, color: '#00ff88' },
+            swarm: { name: 'SWARM MISSILES', fireRate: 800, color: '#ff00ff' }
         };
         let currentWeapon = 'pistol';
         let unlockedWeapons = ['pistol'];
         let laserActive = false;
+
+        // Ammo system - pistol has infinite, others have limited ammo
+        const AMMO_PER_PICKUP = 30;
+        let weaponAmmo = {
+            pistol: Infinity,
+            machinegun: 0,
+            bazooka: 0,
+            laser: 0,
+            flak: 0,
+            disc: 0,
+            swarm: 0
+        };
+        let laserAmmoTimer = 0; // For tracking laser ammo consumption (1 per second)
 
         const jetColors = {
             blue: { body: '#3a7bd5', wings: '#2a5aa5', cockpit: '#87ceeb' },
@@ -3888,7 +3989,8 @@
             respawnsUsedThisLevel = 0;
             savedLevelScore = score;
             bullets = []; enemies = []; particles = []; powerups = [];
-            bombs = []; walls = []; weaponPickups = []; mines = [];
+            bombs = []; walls = []; weaponPickups = []; mines = []; electricFences = [];
+            horizonBeams = []; magneticMines = []; mirrorDrones = [];
             player.x = logicalWidth / 2; player.y = logicalHeight - 80;
             spawnAccumulator = 0; powerupAccumulator = 0; bombAccumulator = 0;
             wallAccumulator = 0; weaponAccumulator = 0; spaceObjAccumulator = 0; mineAccumulator = 0;
@@ -4395,6 +4497,63 @@
         }
         function playLevelUp() {
             [392, 523, 659, 784].forEach((freq, i) => setTimeout(() => playSound(freq, 'square', 0.15, 0.25), i * 80));
+        }
+        function playOuchSound() {
+            if (isMuted) return;
+            // Descending "ouch" sound - sawtooth wave dropping from 200 to 100 Hz
+            const osc = audioContext.createOscillator();
+            const g = audioContext.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, audioContext.currentTime);
+            osc.frequency.linearRampToValueAtTime(100, audioContext.currentTime + 0.15);
+            osc.connect(g);
+            g.connect(audioContext.destination);
+            g.gain.setValueAtTime(0.35, audioContext.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.15);
+        }
+        function playFlakSound() {
+            if (isMuted) return;
+            // Shotgun-like boom with noise burst
+            const bufferSize = audioContext.sampleRate * 0.1;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
+            const source = audioContext.createBufferSource();
+            const g = audioContext.createGain();
+            const filter = audioContext.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 800;
+            source.buffer = buffer;
+            source.connect(filter);
+            filter.connect(g);
+            g.connect(audioContext.destination);
+            g.gain.setValueAtTime(0.4, audioContext.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            source.start();
+        }
+        function playDiscSound() {
+            // High-pitched disc launch sound
+            [1200, 800, 1000].forEach((freq, i) => setTimeout(() => playSound(freq, 'sine', 0.08, 0.2), i * 20));
+        }
+        function playDiscBounceSound() {
+            playSound(1200, 'sine', 0.05, 0.25);
+        }
+        function playSwarmSound() {
+            // Rising tone for swarm missile launch
+            if (isMuted) return;
+            const osc = audioContext.createOscillator();
+            const g = audioContext.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(400, audioContext.currentTime);
+            osc.frequency.linearRampToValueAtTime(800, audioContext.currentTime + 0.3);
+            osc.connect(g);
+            g.connect(audioContext.destination);
+            g.gain.setValueAtTime(0.2, audioContext.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.3);
         }
 
         // === BOSS EVIL LAUGHS ===
@@ -4916,10 +5075,343 @@
                             });
                         }
                     }
+                    // New weapons for ultimate boss
+                    if (phase === 1) bossSpawnMagneticMines(3);
+                    if (phase === 3) bossFireHorizonCleaver();
+                    if (phase === 4 && mirrorDrones.length < 3) bossSpawnMirrorDrones(2);
                     boss.phase++;
                     break;
             }
+
+            // Level 4+ bosses randomly use new weapons
+            if (level >= 4 && Math.random() < 0.2) {
+                const newWeapon = Math.floor(Math.random() * 3);
+                if (newWeapon === 0) bossSpawnMagneticMines(2 + Math.floor(level / 2));
+                else if (newWeapon === 1) bossFireHorizonCleaver();
+                else if (newWeapon === 2 && mirrorDrones.length < 4) bossSpawnMirrorDrones(2);
+            }
             playEnemyBazooka();
+        }
+
+        // === NEW BOSS WEAPONS ===
+
+        // Horizon Cleaver - Full-width beam with safe gaps
+        function bossFireHorizonCleaver() {
+            if (!boss) return;
+            const beamY = 150 + Math.random() * 300;
+            // Create warning first
+            horizonBeams.push({
+                y: beamY,
+                height: 40,
+                isWarning: true,
+                warningTimer: 0,
+                warningDuration: 1000, // 1 sec warning
+                isActive: false,
+                activeTimer: 0,
+                activeDuration: 600, // 0.6 sec active
+                gaps: generateBeamGaps(2) // 2 safe zones
+            });
+            playHorizonCleaverWarning();
+        }
+
+        function generateBeamGaps(count) {
+            const gaps = [];
+            const minGap = 80;
+            const maxGap = 120;
+            for (let i = 0; i < count; i++) {
+                const gapWidth = minGap + Math.random() * (maxGap - minGap);
+                gaps.push({
+                    x: 80 + Math.random() * (logicalWidth - 160 - gapWidth),
+                    width: gapWidth
+                });
+            }
+            return gaps;
+        }
+
+        function playHorizonCleaverWarning() {
+            if (isMuted) return;
+            // Rising warning tone
+            const osc = audioContext.createOscillator();
+            const g = audioContext.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, audioContext.currentTime);
+            osc.frequency.linearRampToValueAtTime(600, audioContext.currentTime + 0.8);
+            osc.connect(g);
+            g.connect(audioContext.destination);
+            g.gain.setValueAtTime(0.15, audioContext.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.8);
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.8);
+        }
+
+        function playHorizonCleaverFire() {
+            if (isMuted) return;
+            // Deep rumbling beam sound
+            const bufferSize = audioContext.sampleRate * 0.5;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.sin(i * 0.01) * Math.exp(-i / (bufferSize * 0.5));
+            }
+            const source = audioContext.createBufferSource();
+            const g = audioContext.createGain();
+            source.buffer = buffer;
+            source.connect(g);
+            g.connect(audioContext.destination);
+            g.gain.setValueAtTime(0.3, audioContext.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+            source.start();
+        }
+
+        // Magnetic Sea Mines - Float down and get attracted to player
+        function bossSpawnMagneticMines(count) {
+            if (!boss) return;
+            for (let i = 0; i < count; i++) {
+                magneticMines.push({
+                    x: boss.x + (Math.random() - 0.5) * boss.width,
+                    y: boss.y + boss.height / 2,
+                    vx: (Math.random() - 0.5) * 50,
+                    vy: 40 + Math.random() * 30,
+                    width: 25,
+                    height: 25,
+                    magnetRadius: 150,
+                    magnetStrength: 0.15,
+                    timer: 0,
+                    maxLife: 6000, // 6 seconds
+                    explosionRadius: 80,
+                    pulsePhase: Math.random() * Math.PI * 2
+                });
+            }
+            playMineSpawn();
+        }
+
+        function playMineSpawn() {
+            if (isMuted) return;
+            [300, 250, 200].forEach((freq, i) => setTimeout(() => playSound(freq, 'sine', 0.1, 0.2), i * 50));
+        }
+
+        // Mirror Drone Swarm - Drones that mirror player movement
+        function bossSpawnMirrorDrones(count) {
+            if (!boss) return;
+            for (let i = 0; i < count; i++) {
+                mirrorDrones.push({
+                    x: boss.x,
+                    y: boss.y + 50 + i * 40,
+                    width: 30,
+                    height: 20,
+                    health: 30,
+                    mirrorOffset: (i - count / 2 + 0.5) * 120, // Spread out
+                    lastShot: 0,
+                    fireRate: 1500 + Math.random() * 500
+                });
+            }
+            playDroneSpawn();
+        }
+
+        function playDroneSpawn() {
+            if (isMuted) return;
+            [600, 800, 1000].forEach((freq, i) => setTimeout(() => playSound(freq, 'square', 0.08, 0.15), i * 40));
+        }
+
+        // === UPDATE FUNCTIONS FOR NEW BOSS WEAPONS ===
+
+        function updateHorizonBeams(dt) {
+            const dtMs = dt * 1000;
+            for (let i = horizonBeams.length - 1; i >= 0; i--) {
+                const beam = horizonBeams[i];
+
+                if (beam.isWarning) {
+                    beam.warningTimer += dtMs;
+                    if (beam.warningTimer >= beam.warningDuration) {
+                        beam.isWarning = false;
+                        beam.isActive = true;
+                        playHorizonCleaverFire();
+                    }
+                } else if (beam.isActive) {
+                    beam.activeTimer += dtMs;
+                    if (beam.activeTimer >= beam.activeDuration) {
+                        horizonBeams.splice(i, 1);
+                        continue;
+                    }
+
+                    // Check collision with player
+                    if (!ghostActive && !isInvincible && canTakeDamage()) {
+                        const playerTop = player.y - 25;
+                        const playerBottom = player.y + 25;
+                        const playerLeft = player.x - 20;
+                        const playerRight = player.x + 20;
+
+                        // Check if player is in beam area
+                        if (playerBottom > beam.y && playerTop < beam.y + beam.height) {
+                            // Check if player is in a gap
+                            let inGap = false;
+                            for (const gap of beam.gaps) {
+                                if (playerLeft > gap.x && playerRight < gap.x + gap.width) {
+                                    inGap = true;
+                                    break;
+                                }
+                            }
+
+                            if (!inGap) {
+                                // Player hit by beam!
+                                if (shieldActive) {
+                                    shieldHits = 0;
+                                    deactivateShield();
+                                    createExplosion(player.x, player.y, '#ff0000', 30);
+                                } else {
+                                    lives--;
+                                    playerHitFlash = 200;
+                                    playOuchSound();
+                                    createExplosion(player.x, player.y, '#ff0000', 25);
+                                    reportAction('hit_by_beam');
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function updateMagneticMines(dt) {
+            const dtMs = dt * 1000;
+            for (let i = magneticMines.length - 1; i >= 0; i--) {
+                const mine = magneticMines[i];
+
+                mine.timer += dtMs;
+                mine.pulsePhase += dt * 5;
+
+                // Magnetic attraction to player
+                const dx = player.x - mine.x;
+                const dy = player.y - mine.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < mine.magnetRadius && dist > 0) {
+                    // Attracted to player
+                    const force = mine.magnetStrength * (1 - dist / mine.magnetRadius);
+                    mine.vx += (dx / dist) * force * 60 * dt;
+                    mine.vy += (dy / dist) * force * 60 * dt;
+                }
+
+                // Apply velocity
+                mine.x += mine.vx * dt;
+                mine.y += mine.vy * dt;
+
+                // Bounce off walls
+                if (mine.x < 20 || mine.x > logicalWidth - 20) {
+                    mine.vx *= -0.8;
+                    mine.x = Math.max(20, Math.min(logicalWidth - 20, mine.x));
+                }
+
+                // Remove if expired or off screen
+                if (mine.timer >= mine.maxLife || mine.y > logicalHeight + 50) {
+                    // Explode on timeout
+                    if (mine.timer >= mine.maxLife) {
+                        explodeMagneticMine(mine);
+                    }
+                    magneticMines.splice(i, 1);
+                    continue;
+                }
+
+                // Check collision with player
+                if (!ghostActive && !isInvincible) {
+                    const playerDist = Math.sqrt(
+                        Math.pow(player.x - mine.x, 2) + Math.pow(player.y - mine.y, 2)
+                    );
+                    if (playerDist < 30) {
+                        explodeMagneticMine(mine);
+                        magneticMines.splice(i, 1);
+                        continue;
+                    }
+                }
+
+                // Check collision with player bullets
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    const b = bullets[j];
+                    if (b.isEnemy) continue;
+                    const bulletDist = Math.sqrt(
+                        Math.pow(b.x - mine.x, 2) + Math.pow(b.y - mine.y, 2)
+                    );
+                    if (bulletDist < 20) {
+                        explodeMagneticMine(mine);
+                        magneticMines.splice(i, 1);
+                        bullets.splice(j, 1);
+                        break;
+                    }
+                }
+            }
+        }
+
+        function explodeMagneticMine(mine) {
+            createExplosion(mine.x, mine.y, '#ff6600', 40);
+            playExplosion();
+
+            // Damage player if close
+            if (!ghostActive && !isInvincible && canTakeDamage()) {
+                const playerDist = Math.sqrt(
+                    Math.pow(player.x - mine.x, 2) + Math.pow(player.y - mine.y, 2)
+                );
+                if (playerDist < mine.explosionRadius) {
+                    if (shieldActive) {
+                        shieldHits = 0;
+                        deactivateShield();
+                    } else {
+                        lives--;
+                        playerHitFlash = 200;
+                        playOuchSound();
+                        reportAction('mine_explosion');
+                    }
+                }
+            }
+        }
+
+        function updateMirrorDrones(dt) {
+            const dtMs = dt * 1000;
+            const now = Date.now();
+
+            for (let i = mirrorDrones.length - 1; i >= 0; i--) {
+                const drone = mirrorDrones[i];
+
+                // Mirror player X position with offset
+                const targetX = player.x + drone.mirrorOffset;
+                drone.x += (targetX - drone.x) * 5 * dt; // Smooth following
+                drone.x = Math.max(20, Math.min(logicalWidth - 20, drone.x));
+
+                // Periodic shooting
+                if (now - drone.lastShot > drone.fireRate) {
+                    bullets.push({
+                        x: drone.x,
+                        y: drone.y + 15,
+                        vx: 0,
+                        vy: 300,
+                        isEnemy: true,
+                        color: '#ff00ff'
+                    });
+                    drone.lastShot = now;
+                    playSound(500, 'sine', 0.05, 0.1);
+                }
+
+                // Check if drone is hit by player bullets
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    const b = bullets[j];
+                    if (b.isEnemy) continue;
+
+                    const dx = b.x - drone.x;
+                    const dy = b.y - drone.y;
+                    if (Math.abs(dx) < drone.width / 2 + 5 && Math.abs(dy) < drone.height / 2 + 5) {
+                        drone.health -= b.damage || 10;
+                        createExplosion(b.x, b.y, '#ff00ff', 10);
+                        bullets.splice(j, 1);
+
+                        if (drone.health <= 0) {
+                            createExplosion(drone.x, drone.y, '#ff00ff', 25);
+                            playExplosion();
+                            score += 50;
+                            mirrorDrones.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         function updateBoss(dt) {
@@ -4933,26 +5425,95 @@
                 if (boss.y >= boss.targetY) {
                     boss.y = boss.targetY;
                     boss.entering = false;
+                    // Initialize random movement pattern
+                    boss.movementMode = 'random_waypoint';
+                    boss.waypoint = { x: logicalWidth / 2, y: boss.targetY };
+                    boss.patternTimer = 0;
+                    boss.patternDuration = 3 + Math.random() * 3;
+                    boss.orbitAngle = 0;
+                    boss.zigzagPhase = 0;
                 }
                 return;
             }
 
-            // Movement - side to side and up/down
+            // Randomized movement patterns
             boss.moveTimer += dt;
+            boss.patternTimer += dt;
             const moveSpeed = boss.speed * diff.speedMult;
 
-            // Horizontal movement
-            boss.x += boss.moveDirX * moveSpeed * dt;
-            if (boss.x < boss.width / 2 + 20) { boss.x = boss.width / 2 + 20; boss.moveDirX = 1; }
-            if (boss.x > logicalWidth - boss.width / 2 - 20) { boss.x = logicalWidth - boss.width / 2 - 20; boss.moveDirX = -1; }
-
-            // Vertical movement (slight bobbing + occasional dives)
-            boss.y = boss.targetY + Math.sin(boss.moveTimer * 2) * 30;
-            if (boss.moveTimer > 5) {
-                boss.moveDirX *= -1;
-                boss.moveTimer = 0;
-                showBossTaunt();
+            // Change movement pattern randomly every 3-6 seconds
+            if (boss.patternTimer > boss.patternDuration) {
+                const patterns = ['random_waypoint', 'chase', 'zigzag', 'orbit', 'strafe'];
+                boss.movementMode = patterns[Math.floor(Math.random() * patterns.length)];
+                boss.patternDuration = 3 + Math.random() * 3;
+                boss.patternTimer = 0;
+                // Set new waypoint
+                boss.waypoint = {
+                    x: 100 + Math.random() * (logicalWidth - 200),
+                    y: 80 + Math.random() * 150
+                };
             }
+
+            // Execute movement based on current pattern
+            switch (boss.movementMode) {
+                case 'random_waypoint':
+                    // Move toward waypoint
+                    const dx = boss.waypoint.x - boss.x;
+                    const dy = boss.waypoint.y - boss.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 10) {
+                        boss.x += (dx / dist) * moveSpeed * dt;
+                        boss.y += (dy / dist) * moveSpeed * dt * 0.5;
+                    } else {
+                        // Reached waypoint, set new one
+                        boss.waypoint = {
+                            x: 100 + Math.random() * (logicalWidth - 200),
+                            y: 80 + Math.random() * 150
+                        };
+                    }
+                    break;
+
+                case 'chase':
+                    // Slowly follow player horizontally
+                    const chaseX = player.x - boss.x;
+                    boss.x += Math.sign(chaseX) * moveSpeed * dt * 0.5;
+                    // Bob up and down
+                    boss.y = boss.targetY + Math.sin(boss.moveTimer * 3) * 40;
+                    break;
+
+                case 'zigzag':
+                    // Quick zigzag pattern
+                    boss.zigzagPhase += dt * 4;
+                    boss.x += Math.sin(boss.zigzagPhase) * moveSpeed * dt * 2;
+                    boss.y = boss.targetY + Math.cos(boss.zigzagPhase * 0.5) * 30;
+                    break;
+
+                case 'orbit':
+                    // Circular orbit around center
+                    boss.orbitAngle += dt * 1.5;
+                    const orbitRadius = 150;
+                    boss.x = logicalWidth / 2 + Math.cos(boss.orbitAngle) * orbitRadius;
+                    boss.y = boss.targetY + Math.sin(boss.orbitAngle) * 50;
+                    break;
+
+                case 'strafe':
+                    // Fast horizontal strafe
+                    boss.x += boss.moveDirX * moveSpeed * dt * 1.5;
+                    if (boss.x < boss.width / 2 + 20) {
+                        boss.x = boss.width / 2 + 20;
+                        boss.moveDirX = 1;
+                    }
+                    if (boss.x > logicalWidth - boss.width / 2 - 20) {
+                        boss.x = logicalWidth - boss.width / 2 - 20;
+                        boss.moveDirX = -1;
+                    }
+                    boss.y = boss.targetY + Math.sin(boss.moveTimer * 2) * 20;
+                    break;
+            }
+
+            // Keep boss in bounds
+            boss.x = Math.max(boss.width / 2 + 20, Math.min(logicalWidth - boss.width / 2 - 20, boss.x));
+            boss.y = Math.max(60, Math.min(250, boss.y));
 
             // Shooting
             boss.shootTimer -= dt;
@@ -5293,12 +5854,31 @@
             return baseSpeed * getDiffSettings().speedMult;
         }
 
+        // Enemy weapon types available by level
+        const ENEMY_WEAPONS_BY_LEVEL = {
+            1: ['pistol'],
+            2: ['pistol', 'spread'],
+            3: ['pistol', 'spread', 'aimed'],
+            4: ['pistol', 'spread', 'aimed', 'burst'],
+            5: ['pistol', 'spread', 'aimed', 'burst', 'machinegun'],
+            6: ['pistol', 'spread', 'aimed', 'burst', 'machinegun', 'bazooka']
+        };
+
         function getEnemyWeapon() {
-            // Enemies get better weapons at higher levels
-            if (level >= 5 && Math.random() < 0.3) return 'bazooka';
-            if (level >= 3 && Math.random() < 0.4) return 'machinegun';
-            if (level >= 2 && Math.random() < 0.2) return 'machinegun';
-            return 'pistol';
+            // Enemies get more weapon types at higher levels
+            const availableWeapons = ENEMY_WEAPONS_BY_LEVEL[Math.min(level, 6)];
+            // Weight toward basic weapons but allow advanced ones
+            const rand = Math.random();
+            if (rand < 0.4) {
+                return 'pistol'; // 40% basic
+            } else if (rand < 0.7) {
+                // 30% - pick from first half of available weapons
+                const halfIdx = Math.floor(availableWeapons.length / 2);
+                return availableWeapons[Math.floor(Math.random() * Math.max(1, halfIdx))];
+            } else {
+                // 30% - pick from any available weapon
+                return availableWeapons[Math.floor(Math.random() * availableWeapons.length)];
+            }
         }
 
         function spawnEnemy() {
@@ -5353,10 +5933,318 @@
             });
         }
 
+        // === ELECTRIC FENCES ===
+        function spawnElectricFence() {
+            // Only spawn fences in level 3+
+            if (level < 3) return;
+
+            const isVertical = Math.random() < 0.5;
+            let fence;
+
+            if (isVertical) {
+                // Vertical fence on left or right side
+                const onLeft = Math.random() < 0.5;
+                fence = {
+                    x: onLeft ? 30 : logicalWidth - 50,
+                    y: 100 + Math.random() * 200,
+                    width: 20,
+                    height: 150 + Math.random() * 100,
+                    isActive: true,
+                    flickerTimer: 0,
+                    nextToggle: 2000 + Math.random() * 3000,
+                    warningTimer: 0,
+                    isWarning: false,
+                    stationary: true
+                };
+            } else {
+                // Horizontal fence that scrolls down
+                const width = 100 + Math.random() * 150;
+                fence = {
+                    x: Math.random() * (logicalWidth - width - 100) + 50,
+                    y: -30,
+                    width: width,
+                    height: 15,
+                    isActive: true,
+                    flickerTimer: 0,
+                    nextToggle: 2000 + Math.random() * 3000,
+                    warningTimer: 0,
+                    isWarning: false,
+                    stationary: false,
+                    speed: 40 * getSpeedMultiplier()
+                };
+            }
+
+            electricFences.push(fence);
+        }
+
+        function updateElectricFences(dt) {
+            electricFences.forEach(fence => {
+                // Move non-stationary fences
+                if (!fence.stationary) {
+                    fence.y += fence.speed * dt;
+                }
+
+                // Toggle timer
+                fence.flickerTimer += dt * 1000;
+
+                // Warning phase before toggling on
+                if (!fence.isActive && fence.flickerTimer >= fence.nextToggle - 500) {
+                    fence.isWarning = true;
+                }
+
+                // Toggle state
+                if (fence.flickerTimer >= fence.nextToggle) {
+                    fence.isActive = !fence.isActive;
+                    fence.flickerTimer = 0;
+                    fence.nextToggle = 2000 + Math.random() * 3000;
+                    fence.isWarning = false;
+                    if (fence.isActive) {
+                        playElectricSound();
+                    }
+                }
+            });
+
+            // Remove fences that have scrolled off screen
+            electricFences = electricFences.filter(f => f.stationary || f.y < logicalHeight + 50);
+
+            // Remove old stationary fences randomly (max 4 at a time)
+            while (electricFences.filter(f => f.stationary).length > 4) {
+                const stationaryIdx = electricFences.findIndex(f => f.stationary);
+                if (stationaryIdx >= 0) electricFences.splice(stationaryIdx, 1);
+            }
+        }
+
+        function drawElectricFence(fence) {
+            ctx.save();
+
+            if (fence.isActive) {
+                // Active fence - bright blue electric effect
+                const flicker = Math.sin(Date.now() * 0.02) * 0.3 + 0.7;
+
+                // Glow effect
+                ctx.fillStyle = `rgba(100, 200, 255, ${flicker * 0.3})`;
+                ctx.fillRect(fence.x - 5, fence.y - 5, fence.width + 10, fence.height + 10);
+
+                // Main fence body
+                ctx.fillStyle = `rgba(150, 220, 255, ${flicker})`;
+                ctx.fillRect(fence.x, fence.y, fence.width, fence.height);
+
+                // Electric sparks
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                for (let i = 0; i < 5; i++) {
+                    const sparkX = fence.x + Math.random() * fence.width;
+                    const sparkY = fence.y + Math.random() * fence.height;
+                    ctx.beginPath();
+                    ctx.moveTo(sparkX, sparkY);
+                    ctx.lineTo(sparkX + (Math.random() - 0.5) * 20, sparkY + (Math.random() - 0.5) * 20);
+                    ctx.stroke();
+                }
+
+                // Edge glow
+                ctx.strokeStyle = '#00ffff';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(fence.x, fence.y, fence.width, fence.height);
+            } else if (fence.isWarning) {
+                // Warning phase - flashing
+                const flash = Math.sin(Date.now() * 0.015) > 0;
+                if (flash) {
+                    ctx.fillStyle = 'rgba(255, 100, 100, 0.5)';
+                    ctx.fillRect(fence.x, fence.y, fence.width, fence.height);
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(fence.x, fence.y, fence.width, fence.height);
+                }
+            } else {
+                // Inactive - dim outline
+                ctx.strokeStyle = 'rgba(100, 150, 200, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(fence.x, fence.y, fence.width, fence.height);
+            }
+
+            ctx.restore();
+        }
+
+        // === DRAW FUNCTIONS FOR NEW BOSS WEAPONS ===
+
+        function drawHorizonBeam(beam) {
+            ctx.save();
+
+            if (beam.isWarning) {
+                // Warning phase - flashing red line showing where beam will appear
+                const flash = Math.sin(Date.now() * 0.02) > 0;
+                if (flash) {
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 4;
+                    ctx.setLineDash([20, 10]);
+                    ctx.beginPath();
+                    ctx.moveTo(0, beam.y + beam.height / 2);
+                    ctx.lineTo(logicalWidth, beam.y + beam.height / 2);
+                    ctx.stroke();
+
+                    // Draw gap indicators (safe zones)
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+                    for (const gap of beam.gaps) {
+                        ctx.fillRect(gap.x, beam.y - 10, gap.width, beam.height + 20);
+                    }
+                }
+            } else if (beam.isActive) {
+                // Active beam - deadly laser across screen
+                const intensity = Math.sin(Date.now() * 0.03) * 0.2 + 0.8;
+
+                // Outer glow
+                ctx.fillStyle = `rgba(255, 50, 50, ${intensity * 0.3})`;
+                ctx.fillRect(0, beam.y - 15, logicalWidth, beam.height + 30);
+
+                // Inner beam
+                ctx.fillStyle = `rgba(255, 150, 100, ${intensity * 0.8})`;
+                ctx.fillRect(0, beam.y, logicalWidth, beam.height);
+
+                // Core
+                ctx.fillStyle = `rgba(255, 255, 200, ${intensity})`;
+                ctx.fillRect(0, beam.y + beam.height * 0.3, logicalWidth, beam.height * 0.4);
+
+                // Draw gaps (safe zones) as dark areas
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+                for (const gap of beam.gaps) {
+                    ctx.fillRect(gap.x, beam.y - 15, gap.width, beam.height + 30);
+                    // Green border around safe zone
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(gap.x, beam.y - 15, gap.width, beam.height + 30);
+                }
+            }
+
+            ctx.restore();
+        }
+
+        function drawMagneticMine(mine) {
+            ctx.save();
+            ctx.translate(mine.x, mine.y);
+
+            // Pulsing glow showing magnetic field
+            const pulseRadius = 20 + Math.sin(mine.pulsePhase) * 5;
+            const gradient = ctx.createRadialGradient(0, 0, 5, 0, 0, pulseRadius);
+            gradient.addColorStop(0, 'rgba(255, 100, 0, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(255, 50, 0, 0.4)');
+            gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(0, 0, pulseRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Mine body
+            ctx.fillStyle = '#ff6600';
+            ctx.beginPath();
+            ctx.arc(0, 0, 12, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Spikes
+            ctx.fillStyle = '#ff3300';
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2 + mine.pulsePhase * 0.2;
+                const spikeX = Math.cos(angle) * 15;
+                const spikeY = Math.sin(angle) * 15;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(angle) * 8, Math.sin(angle) * 8);
+                ctx.lineTo(spikeX, spikeY);
+                ctx.lineTo(Math.cos(angle + 0.2) * 8, Math.sin(angle + 0.2) * 8);
+                ctx.fill();
+            }
+
+            // Center light
+            const blinkIntensity = Math.sin(mine.pulsePhase * 2) > 0 ? 1 : 0.3;
+            ctx.fillStyle = `rgba(255, 255, 0, ${blinkIntensity})`;
+            ctx.beginPath();
+            ctx.arc(0, 0, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Show magnet radius when close to player
+            const playerDist = Math.sqrt(Math.pow(player.x - mine.x, 2) + Math.pow(player.y - mine.y, 2));
+            if (playerDist < mine.magnetRadius * 1.2) {
+                ctx.strokeStyle = `rgba(255, 100, 0, ${0.2 * (1 - playerDist / mine.magnetRadius)})`;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.arc(0, 0, mine.magnetRadius, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function drawMirrorDrone(drone) {
+            ctx.save();
+            ctx.translate(drone.x, drone.y);
+
+            // Drone body
+            ctx.fillStyle = '#8800ff';
+            ctx.beginPath();
+            ctx.moveTo(-15, 10);
+            ctx.lineTo(0, -10);
+            ctx.lineTo(15, 10);
+            ctx.lineTo(0, 5);
+            ctx.closePath();
+            ctx.fill();
+
+            // Engine glow
+            ctx.fillStyle = '#ff00ff';
+            ctx.beginPath();
+            ctx.arc(0, 8, 4 + Math.sin(Date.now() * 0.01) * 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Wings
+            ctx.fillStyle = '#aa44ff';
+            ctx.fillRect(-20, 0, 8, 6);
+            ctx.fillRect(12, 0, 8, 6);
+
+            // Health indicator
+            const healthPercent = drone.health / 30;
+            ctx.fillStyle = healthPercent > 0.5 ? '#00ff00' : healthPercent > 0.25 ? '#ffff00' : '#ff0000';
+            ctx.fillRect(-10, -15, 20 * healthPercent, 3);
+
+            ctx.restore();
+        }
+
+        function playElectricSound() {
+            if (isMuted) return;
+            // Electric zap sound - white noise with oscillator
+            const bufferSize = audioContext.sampleRate * 0.2;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3)) * Math.sin(i * 0.1);
+            }
+            const source = audioContext.createBufferSource();
+            const g = audioContext.createGain();
+            source.buffer = buffer;
+            source.connect(g);
+            g.connect(audioContext.destination);
+            g.gain.setValueAtTime(0.2, audioContext.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+            source.start();
+        }
+
         function spawnWeaponPickup() {
-            const available = ['machinegun', 'bazooka', 'laser'].filter(w => !unlockedWeapons.includes(w));
-            if (available.length === 0) return;
-            const type = available[Math.floor(Math.random() * available.length)];
+            // All weapons that can spawn as pickups (new weapons unlock in later levels)
+            let available = ['machinegun', 'bazooka', 'laser'];
+            if (level >= 2) available.push('flak');
+            if (level >= 3) available.push('disc');
+            if (level >= 4) available.push('swarm');
+
+            // Prefer weapons not unlocked yet, but also spawn ammo for unlocked ones
+            const notUnlocked = available.filter(w => !unlockedWeapons.includes(w));
+            let type;
+            if (notUnlocked.length > 0 && Math.random() < 0.6) {
+                // 60% chance to spawn a new weapon
+                type = notUnlocked[Math.floor(Math.random() * notUnlocked.length)];
+            } else {
+                // 40% chance to spawn ammo for any weapon
+                type = available[Math.floor(Math.random() * available.length)];
+            }
+
             weaponPickups.push({
                 x: Math.random() * (logicalWidth - 60) + 30, y: -30,
                 width: 30, height: 30, speed: 70 * getSpeedMultiplier(), rotation: 0, type: type
@@ -5526,6 +6414,11 @@
             ctx.save();
             ctx.translate(player.x, player.y);
 
+            // Player hit flash effect (red overlay when damaged)
+            if (playerHitFlash > 0) {
+                ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.03) * 0.3;
+            }
+
             // Coop mode: if dead/respawning, draw as ghost with timer
             if (isMultiplayer && selectedGameMode === 'coop' && !coopState.amActive) {
                 ctx.globalAlpha = 0.3;
@@ -5599,6 +6492,17 @@
             ctx.lineTo(5, 25);
             ctx.closePath();
             ctx.fill();
+
+            // Red overlay when hit
+            if (playerHitFlash > 0) {
+                ctx.globalAlpha = 0.4 + Math.sin(Date.now() * 0.02) * 0.2;
+                ctx.fillStyle = '#ff0000';
+                ctx.beginPath();
+                ctx.moveTo(0, -25); ctx.lineTo(-20, 25); ctx.lineTo(-8, 20);
+                ctx.lineTo(-8, 25); ctx.lineTo(8, 25); ctx.lineTo(8, 20); ctx.lineTo(20, 25);
+                ctx.closePath();
+                ctx.fill();
+            }
 
             ctx.restore();
         }
@@ -5750,6 +6654,62 @@
                 ctx.fillRect(bullet.x - 3, bullet.y - 6, 6, 12);
                 ctx.fillStyle = col;
                 ctx.fillRect(bullet.x - 2, bullet.y - 5, 4, 10);
+            } else if (bullet.type === 'flak') {
+                // Small orange pellets
+                ctx.fillStyle = 'rgba(255, 136, 0, 0.5)';
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ff8800';
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (bullet.type === 'disc') {
+                // Spinning green disc
+                ctx.save();
+                ctx.translate(bullet.x, bullet.y);
+                ctx.rotate(Date.now() * 0.01);
+                ctx.fillStyle = 'rgba(0, 255, 136, 0.4)';
+                ctx.beginPath();
+                ctx.arc(0, 0, 12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#00ff88';
+                ctx.beginPath();
+                ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(-6, 0);
+                ctx.lineTo(6, 0);
+                ctx.moveTo(0, -6);
+                ctx.lineTo(0, 6);
+                ctx.stroke();
+                ctx.restore();
+            } else if (bullet.type === 'swarm') {
+                // Small homing missiles
+                ctx.save();
+                ctx.translate(bullet.x, bullet.y);
+                // Rotate based on velocity
+                const angle = Math.atan2(bullet.vy, bullet.vx);
+                ctx.rotate(angle + Math.PI / 2);
+                // Missile body
+                ctx.fillStyle = '#ff00ff';
+                ctx.beginPath();
+                ctx.moveTo(0, -6);
+                ctx.lineTo(-3, 4);
+                ctx.lineTo(3, 4);
+                ctx.closePath();
+                ctx.fill();
+                // Exhaust
+                ctx.fillStyle = '#ffff00';
+                ctx.beginPath();
+                ctx.moveTo(-2, 4);
+                ctx.lineTo(0, 8 + Math.random() * 4);
+                ctx.lineTo(2, 4);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
             } else {
                 const color = bullet.isEnemy ? '#ff4444' : '#00ffff';
                 const glow = bullet.isEnemy ? 'rgba(255, 68, 68, 0.3)' : 'rgba(0, 255, 255, 0.3)';
@@ -5807,21 +6767,48 @@
             ctx.save();
             ctx.translate(bomb.x, bomb.y);
             ctx.rotate(bomb.rotation);
-            ctx.fillStyle = 'rgba(255, 100, 0, 0.3)';
-            ctx.beginPath();
-            ctx.arc(0, 0, 18, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#333';
-            ctx.beginPath();
-            ctx.arc(0, 0, 12, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#ff4400';
-            ctx.fillRect(-3, -15, 6, 6);
-            const flicker = Math.sin(Date.now() / 50) > 0;
-            ctx.fillStyle = flicker ? '#ffff00' : '#ff8800';
-            ctx.beginPath();
-            ctx.arc(0, -18, 4, 0, Math.PI * 2);
-            ctx.fill();
+
+            // Player bombs are cyan/blue, enemy bombs are orange/red
+            if (bomb.isPlayerBomb) {
+                // Player bomb - cyan glow
+                ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+                ctx.beginPath();
+                ctx.arc(0, 0, 20, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#00aaff';
+                ctx.beginPath();
+                ctx.arc(0, 0, 14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#003366';
+                ctx.beginPath();
+                ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                ctx.fill();
+                // Timer indicator - pulsing based on time remaining
+                const timerRatio = bomb.timer / bomb.fuseTime;
+                const flash = Math.sin(Date.now() * 0.02 * (1 + timerRatio * 5)) > 0;
+                ctx.fillStyle = flash ? '#ffffff' : '#00ffff';
+                ctx.beginPath();
+                ctx.arc(0, 0, 4, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                // Enemy bomb - orange/red
+                ctx.fillStyle = 'rgba(255, 100, 0, 0.3)';
+                ctx.beginPath();
+                ctx.arc(0, 0, 18, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#333';
+                ctx.beginPath();
+                ctx.arc(0, 0, 12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ff4400';
+                ctx.fillRect(-3, -15, 6, 6);
+                const flicker = Math.sin(Date.now() / 50) > 0;
+                ctx.fillStyle = flicker ? '#ffff00' : '#ff8800';
+                ctx.beginPath();
+                ctx.arc(0, -18, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
             ctx.restore();
         }
 
@@ -5963,17 +6950,23 @@
             ctx.save();
             ctx.translate(wp.x, wp.y);
             ctx.rotate(wp.rotation);
-            const colors = { machinegun: '#ffff00', bazooka: '#ff6600', laser: '#ff00ff' };
-            ctx.fillStyle = colors[wp.type] + '33';
+            const colors = {
+                machinegun: '#ffff00', bazooka: '#ff6600', laser: '#ff00ff',
+                flak: '#ff8800', disc: '#00ff88', swarm: '#ff00ff'
+            };
+            ctx.fillStyle = (colors[wp.type] || '#ffffff') + '33';
             ctx.beginPath();
             ctx.arc(0, 0, 20, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = colors[wp.type];
+            ctx.fillStyle = colors[wp.type] || '#ffffff';
             ctx.font = 'bold 12px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            const labels = { machinegun: 'MG', bazooka: 'BZ', laser: 'LS' };
-            ctx.fillText(labels[wp.type], 0, 0);
+            const labels = {
+                machinegun: 'MG', bazooka: 'BZ', laser: 'LS',
+                flak: 'FK', disc: 'DC', swarm: 'SW'
+            };
+            ctx.fillText(labels[wp.type] || '?', 0, 0);
             ctx.restore();
         }
 
@@ -6044,13 +7037,45 @@
         }
 
         // === SHOOTING ===
+        // Switch to next weapon that has ammo
+        function switchToNextAvailableWeapon() {
+            // Try to find a weapon with ammo
+            for (const w of unlockedWeapons) {
+                if (w === 'pistol' || weaponAmmo[w] > 0) {
+                    currentWeapon = w;
+                    laserActive = false;
+                    updateWeaponDisplay();
+                    return;
+                }
+            }
+            // Fallback to pistol (always available)
+            currentWeapon = 'pistol';
+            laserActive = false;
+            updateWeaponDisplay();
+        }
+
         function shoot() {
             // Ghost mode allows shooting now
 
             const now = Date.now();
             const weapon = WEAPONS[currentWeapon];
             if (now - lastFireTime < weapon.fireRate) return;
+
+            // Check if we have ammo (pistol has infinite)
+            if (currentWeapon !== 'pistol' && weaponAmmo[currentWeapon] <= 0) {
+                switchToNextAvailableWeapon();
+                return;
+            }
+
             lastFireTime = now;
+
+            // Deduct ammo (except pistol and laser which uses time-based consumption)
+            if (currentWeapon !== 'pistol' && currentWeapon !== 'laser') {
+                weaponAmmo[currentWeapon]--;
+                if (weaponAmmo[currentWeapon] <= 0) {
+                    // Will auto-switch on next shot attempt
+                }
+            }
 
             const bulletMult = getSpeedMultiplier();
             if (currentWeapon === 'pistol') {
@@ -6066,7 +7091,70 @@
             } else if (currentWeapon === 'laser') {
                 laserActive = true;
                 playLaserBeam();
+            } else if (currentWeapon === 'flak') {
+                // Flak cannon - fires 8 pellets in a spread
+                playFlakSound();
+                for (let i = 0; i < 8; i++) {
+                    const baseAngle = -90; // up
+                    const angle = baseAngle + (i - 3.5) * 4 + (Math.random() - 0.5) * 10;
+                    const rad = angle * Math.PI / 180;
+                    bullets.push({
+                        x: player.x,
+                        y: player.y - 20,
+                        vx: Math.cos(rad) * 12 * bulletMult,
+                        vy: Math.sin(rad) * 12 * bulletMult,
+                        speed: 0, // uses vx/vy instead
+                        isEnemy: false,
+                        type: 'flak',
+                        width: 6,
+                        height: 6,
+                        damage: 15,
+                        maxDistance: 300,
+                        startY: player.y
+                    });
+                }
+            } else if (currentWeapon === 'disc') {
+                // Disc launcher - bounces off walls
+                playDiscSound();
+                bullets.push({
+                    x: player.x,
+                    y: player.y - 20,
+                    vx: 0,
+                    vy: -10 * bulletMult,
+                    speed: 0,
+                    isEnemy: false,
+                    type: 'disc',
+                    width: 20,
+                    height: 20,
+                    damage: 40,
+                    bouncesLeft: 3,
+                    hitEnemies: []
+                });
+            } else if (currentWeapon === 'swarm') {
+                // Swarm missiles - 5 homing missiles
+                playSwarmSound();
+                for (let i = 0; i < 5; i++) {
+                    setTimeout(() => {
+                        if (!gameRunning) return;
+                        bullets.push({
+                            x: player.x + (i - 2) * 10,
+                            y: player.y - 20,
+                            vx: (Math.random() - 0.5) * 4,
+                            vy: -6 * bulletMult,
+                            speed: 0,
+                            isEnemy: false,
+                            type: 'swarm',
+                            width: 8,
+                            height: 12,
+                            damage: 25,
+                            target: null,
+                            homingStrength: 0.15
+                        });
+                    }, i * 50);
+                }
             }
+
+            updateWeaponDisplay();
 
             // Broadcast to partner in coop mode
             if (isMultiplayer && selectedGameMode === 'coop') {
@@ -6085,6 +7173,58 @@
             } else if (enemy.weapon === 'bazooka') {
                 bullets.push({ x: enemy.x, y: enemy.y + 20, speed: speed * 0.7, isEnemy: true, type: 'bazooka', width: 20, height: 20, explosive: true });
                 playEnemyBazooka();
+            } else if (enemy.weapon === 'spread') {
+                // 3 bullets in a spread pattern
+                for (let i = -1; i <= 1; i++) {
+                    const angle = i * 15 * Math.PI / 180;
+                    bullets.push({
+                        x: enemy.x,
+                        y: enemy.y + 20,
+                        vx: Math.sin(angle) * Math.abs(speed) * 0.3,
+                        vy: -Math.abs(speed) * 0.8,
+                        speed: 0,
+                        isEnemy: true,
+                        type: 'pistol',
+                        width: 10,
+                        height: 20
+                    });
+                }
+                playEnemyLaser();
+            } else if (enemy.weapon === 'aimed') {
+                // Aimed at player
+                const dx = player.x - enemy.x;
+                const dy = player.y - enemy.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const bulletSpeed = Math.abs(speed);
+                bullets.push({
+                    x: enemy.x,
+                    y: enemy.y + 20,
+                    vx: (dx / dist) * bulletSpeed * 0.6,
+                    vy: (dy / dist) * bulletSpeed * 0.6,
+                    speed: 0,
+                    isEnemy: true,
+                    type: 'pistol',
+                    width: 10,
+                    height: 20
+                });
+                playEnemyLaser();
+            } else if (enemy.weapon === 'burst') {
+                // 3 shots in quick succession
+                for (let i = 0; i < 3; i++) {
+                    setTimeout(() => {
+                        if (!enemy || !gameRunning) return;
+                        bullets.push({
+                            x: enemy.x,
+                            y: enemy.y + 20,
+                            speed: speed,
+                            isEnemy: true,
+                            type: 'pistol',
+                            width: 10,
+                            height: 20
+                        });
+                    }, i * 100);
+                }
+                playEnemyLaser();
             } else {
                 bullets.push({ x: enemy.x, y: enemy.y + 20, speed: speed, isEnemy: true, type: 'pistol', width: 10, height: 20 });
                 playEnemyLaser();
@@ -6099,9 +7239,90 @@
             updateWeaponDisplay();
         }
 
+        // Player drops a bomb (B key)
+        function dropPlayerBomb() {
+            const now = Date.now();
+            if (playerBombs <= 0) return;
+            if (now - lastPlayerBombTime < PLAYER_BOMB_COOLDOWN) return;
+
+            playerBombs--;
+            lastPlayerBombTime = now;
+
+            // Create player bomb - drops upward into enemies
+            bombs.push({
+                x: player.x,
+                y: player.y - 30,
+                width: 30,
+                height: 30,
+                speed: -150 * getSpeedMultiplier(), // Goes up
+                rotation: 0,
+                isPlayerBomb: true,
+                timer: 0,
+                fuseTime: 1500 // 1.5 seconds until explosion
+            });
+
+            playBazooka();
+        }
+
         function updateWeaponDisplay() {
-            const wpnList = unlockedWeapons.map(w => w === currentWeapon ? `[${WEAPONS[w].name}]` : WEAPONS[w].name.charAt(0)).join(' ');
+            const wpnList = unlockedWeapons.map(w => {
+                const ammo = w === 'pistol' ? '∞' : weaponAmmo[w];
+                if (w === currentWeapon) {
+                    return `[${WEAPONS[w].name}:${ammo}]`;
+                }
+                return `${WEAPONS[w].name.charAt(0)}:${ammo}`;
+            }).join(' ');
             document.getElementById('weaponDisplay').textContent = wpnList + ' [Q]';
+
+            // Update weapon panel
+            updateWeaponPanel();
+        }
+
+        function updateWeaponPanel() {
+            const panel = document.getElementById('weaponPanel');
+            if (!panel) return;
+
+            // All possible weapons in order
+            const allWeapons = ['pistol', 'machinegun', 'bazooka', 'laser', 'flak', 'disc', 'swarm'];
+
+            panel.innerHTML = allWeapons.map((weaponKey, index) => {
+                const weapon = WEAPONS[weaponKey];
+                const isUnlocked = unlockedWeapons.includes(weaponKey);
+                const ammo = weaponKey === 'pistol' ? Infinity : weaponAmmo[weaponKey];
+                const isActive = currentWeapon === weaponKey;
+                const ammoDisplay = ammo === Infinity ? '∞' : ammo;
+
+                // Determine slot classes
+                let classes = 'weapon-slot';
+                if (isActive) classes += ' active';
+                if (!isUnlocked) classes += ' empty';
+                else if (ammo !== Infinity && ammo <= 0) classes += ' no-ammo';
+                else if (ammo !== Infinity && ammo <= 10) classes += ' low-ammo';
+
+                // Only make clickable if unlocked and has ammo (or is pistol)
+                const clickHandler = isUnlocked && (ammo > 0 || ammo === Infinity) ?
+                    `onclick="switchToWeapon('${weaponKey}')"` : '';
+
+                return `
+                    <div class="${classes}" ${clickHandler}>
+                        <div class="weapon-header">
+                            <span class="weapon-name">${weapon.name}</span>
+                            <span class="weapon-key">[${index + 1}]</span>
+                        </div>
+                        <div class="weapon-ammo">${isUnlocked ? ammoDisplay : '---'}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function switchToWeapon(weaponKey) {
+            if (!unlockedWeapons.includes(weaponKey)) return;
+            if (weaponKey !== 'pistol' && weaponAmmo[weaponKey] <= 0) return;
+
+            currentWeapon = weaponKey;
+            laserActive = (weaponKey === 'laser');
+            updateWeaponDisplay();
+            playSound(800, 'sine', 0.05, 0.1); // Click sound
         }
 
         function checkCollision(a, b) {
@@ -6217,6 +7438,12 @@
         function update(dt) {
             if (!gameRunning || gamePaused) return;
 
+            // Decrement player hit flash timer
+            if (playerHitFlash > 0) {
+                playerHitFlash -= dt * 1000; // dt is in seconds, convert to ms
+                if (playerHitFlash < 0) playerHitFlash = 0;
+            }
+
             const diff = getDiffSettings();
 
             // Update boss if active
@@ -6249,6 +7476,18 @@
 
             // Laser damage (blocked by walls)
             if (laserActive && currentWeapon === 'laser') {
+                // Consume laser ammo (1 per second)
+                laserAmmoTimer += dt * 1000;
+                if (laserAmmoTimer >= 1000) {
+                    laserAmmoTimer = 0;
+                    weaponAmmo.laser--;
+                    updateWeaponDisplay();
+                    if (weaponAmmo.laser <= 0) {
+                        laserActive = false;
+                        switchToNextAvailableWeapon();
+                    }
+                }
+
                 const laserEndY = getLaserEndY();
                 // Damage enemies (only those below wall blocking point)
                 enemies = enemies.filter(enemy => {
@@ -6272,8 +7511,75 @@
 
             // Update bullets
             bullets = bullets.filter(b => {
-                b.y -= b.speed * dt;
-                if (b.vx) b.x += b.vx * dt; // Boss bullets have horizontal movement
+                // Handle bullets with vx/vy (flak, disc, swarm) vs speed-based
+                if (b.vx !== undefined || b.vy !== undefined) {
+                    b.x += (b.vx || 0) * dt * 60;
+                    b.y += (b.vy || 0) * dt * 60;
+                } else {
+                    b.y -= b.speed * dt;
+                }
+
+                // Disc bouncing logic
+                if (b.type === 'disc') {
+                    if (b.x < 10 || b.x > logicalWidth - 10) {
+                        b.vx *= -1;
+                        b.bouncesLeft--;
+                        b.hitEnemies = []; // Can re-hit enemies after bounce
+                        playDiscBounceSound();
+                        if (b.bouncesLeft < 0) return false;
+                    }
+                    // Also bounce off top
+                    if (b.y < 10) {
+                        b.vy *= -1;
+                        b.bouncesLeft--;
+                        b.hitEnemies = [];
+                        playDiscBounceSound();
+                        if (b.bouncesLeft < 0) return false;
+                    }
+                }
+
+                // Swarm homing logic
+                if (b.type === 'swarm' && !b.isEnemy) {
+                    // Find nearest enemy or boss
+                    let nearestTarget = null;
+                    let nearestDist = Infinity;
+
+                    enemies.forEach(e => {
+                        const dist = Math.hypot(e.x - b.x, e.y - b.y);
+                        if (dist < nearestDist) {
+                            nearestDist = dist;
+                            nearestTarget = e;
+                        }
+                    });
+
+                    // Also target boss
+                    if (boss) {
+                        const dist = Math.hypot(boss.x - b.x, boss.y - b.y);
+                        if (dist < nearestDist) {
+                            nearestDist = dist;
+                            nearestTarget = boss;
+                        }
+                    }
+
+                    if (nearestTarget) {
+                        const dx = nearestTarget.x - b.x;
+                        const dy = nearestTarget.y - b.y;
+                        b.vx += Math.sign(dx) * b.homingStrength;
+                        b.vy += Math.sign(dy) * b.homingStrength;
+                        // Normalize speed
+                        const speed = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
+                        if (speed > 0) {
+                            b.vx = (b.vx / speed) * 8;
+                            b.vy = (b.vy / speed) * 8;
+                        }
+                    }
+                }
+
+                // Flak range limit
+                if (b.type === 'flak' && b.startY !== undefined) {
+                    if (Math.abs(b.y - b.startY) > b.maxDistance) return false;
+                }
+
                 return b.y > -20 && b.y < logicalHeight + 20 && b.x > -20 && b.x < logicalWidth + 20;
             });
 
@@ -6315,8 +7621,48 @@
             powerups = powerups.filter(p => p.y < logicalHeight + 50);
 
             // Update bombs
-            bombs.forEach(b => { b.y += b.speed * dt; b.rotation += 2 * dt; });
-            bombs = bombs.filter(b => b.y < logicalHeight + 50);
+            bombs = bombs.filter(b => {
+                b.y += b.speed * dt;
+                b.rotation += 2 * dt;
+
+                // Player bombs have timer and explode
+                if (b.isPlayerBomb) {
+                    b.timer += dt * 1000;
+                    // Explode on timer or if goes off top
+                    if (b.timer >= b.fuseTime || b.y < -30) {
+                        // Big explosion that damages enemies
+                        createBigExplosion(b.x, b.y);
+                        playBigExplosion();
+                        // Damage enemies in radius
+                        enemies = enemies.filter(e => {
+                            const dist = Math.hypot(e.x - b.x, e.y - b.y);
+                            if (dist < 120) {
+                                score += 100;
+                                totalEnemiesKilled++;
+                                killsThisLevel++;
+                                createExplosion(e.x, e.y, '#ff6600');
+                                return false;
+                            }
+                            return true;
+                        });
+                        // Damage boss if nearby
+                        if (boss) {
+                            const dist = Math.hypot(boss.x - b.x, boss.y - b.y);
+                            if (dist < 150) {
+                                damageBoss(10);
+                            }
+                        }
+                        document.getElementById('score').textContent = score;
+                        checkLevelUp();
+                        return false; // Remove bomb
+                    }
+                    // Player bombs go up and off screen
+                    return b.y > -50;
+                }
+
+                // Enemy bombs fall down
+                return b.y < logicalHeight + 50;
+            });
 
             // Update mines (float left/right as they descend)
             mines.forEach(m => {
@@ -6372,6 +7718,8 @@
                                 }
                             } else {
                                 lives--;
+                                playerHitFlash = 200; // Flash for 200ms
+                                playOuchSound();
                                 document.getElementById('lives').textContent = lives;
                                 createExplosion(player.x, player.y, jetColors[selectedColor].body);
                                 playExplosion();
@@ -6463,6 +7811,8 @@
                                 }
                             } else {
                                 lives--;
+                                playerHitFlash = 200; // Flash for 200ms
+                                playOuchSound();
                                 document.getElementById('lives').textContent = lives;
                                 createExplosion(player.x, player.y, jetColors[selectedColor].body);
                                 playExplosion();
@@ -6556,6 +7906,8 @@
                                 }
                             } else {
                                 lives--;
+                                playerHitFlash = 200; // Flash for 200ms
+                                playOuchSound();
                                 document.getElementById('lives').textContent = lives;
                                 createExplosion(player.x, player.y, jetColors[selectedColor].body);
                                 playExplosion();
@@ -6634,6 +7986,10 @@
                     if (!unlockedWeapons.includes(w.type)) {
                         unlockedWeapons.push(w.type);
                     }
+                    // Add ammo for the weapon (stackable)
+                    if (w.type !== 'pistol') {
+                        weaponAmmo[w.type] += AMMO_PER_PICKUP;
+                    }
                     currentWeapon = w.type;
                     updateWeaponDisplay();
                     reportAction('got_' + w.type);
@@ -6666,6 +8022,8 @@
                                 }
                             } else {
                                 lives--;
+                                playerHitFlash = 200; // Flash for 200ms
+                                playOuchSound();
                                 document.getElementById('lives').textContent = lives;
                                 createExplosion(player.x, player.y, jetColors[selectedColor].body);
                                 if (lives <= 0) {
@@ -6684,6 +8042,47 @@
             // Ghost timer
             if (ghostActive && (Date.now() - ghostStartTime) >= ghostDuration) deactivateGhost();
 
+            // Update electric fences
+            updateElectricFences(dt);
+
+            // Electric fence collision - instant death if active!
+            if (!ghostActive && !isInvincible) {
+                for (const fence of electricFences) {
+                    if (fence.isActive) {
+                        // Check collision with player
+                        const playerLeft = player.x - 20;
+                        const playerRight = player.x + 20;
+                        const playerTop = player.y - 25;
+                        const playerBottom = player.y + 25;
+
+                        if (playerRight > fence.x && playerLeft < fence.x + fence.width &&
+                            playerBottom > fence.y && playerTop < fence.y + fence.height) {
+                            // Instant death from electric fence!
+                            if (shieldActive) {
+                                // Shield absorbs electric hit
+                                shieldHits = 0;
+                                deactivateShield();
+                                createExplosion(player.x, player.y, '#00ffff', 30);
+                                playElectricSound();
+                            } else if (canTakeDamage()) {
+                                lives = 0;
+                                playerHitFlash = 300;
+                                playElectricSound();
+                                createBigExplosion(player.x, player.y);
+                                reportAction('electrocuted');
+                                handlePlayerDeath('electrocuted');
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Update new boss weapons
+            updateHorizonBeams(dt);
+            updateMagneticMines(dt);
+            updateMirrorDrones(dt);
+
             updateBackground(dt);
             updateParticles(dt);
             updateLightningFlash(dt);
@@ -6694,6 +8093,11 @@
             walls.forEach(drawWall);
             bombs.forEach(drawBomb);
             mines.forEach(drawMine);
+            electricFences.forEach(drawElectricFence);
+            // Draw new boss weapons
+            horizonBeams.forEach(drawHorizonBeam);
+            magneticMines.forEach(drawMagneticMine);
+            mirrorDrones.forEach(drawMirrorDrone);
             bullets.forEach(drawBullet);
             enemies.forEach(drawEnemy);
             powerups.forEach(drawPowerup);
@@ -6765,6 +8169,15 @@
                 mineAccumulator += dt;
                 if (mineAccumulator >= 4 && totalEnemiesKilled >= 3 && Math.random() < 0.3) { spawnMine(); mineAccumulator = 0; }
 
+                // Electric fences spawn in level 3+ (not during boss fight)
+                if (!bossActive && level >= 3) {
+                    fenceSpawnAccumulator += dt;
+                    if (fenceSpawnAccumulator >= 8 && Math.random() < 0.25) {
+                        spawnElectricFence();
+                        fenceSpawnAccumulator = 0;
+                    }
+                }
+
                 // Only spawn enemies and bombs when NOT fighting a boss
                 if (!bossActive) {
                     // Spawn rate decreases (faster spawning) with level and difficulty
@@ -6801,6 +8214,9 @@
             level = 1;
             lives = diff.lives;
             totalEnemiesKilled = 0;
+            playerHitFlash = 0;
+            playerBombs = 3; // Start with 3 bombs
+            lastPlayerBombTime = 0;
             killsThisLevel = 0;
             continuesUsedThisLevel = 0;
             respawnsUsedThisLevel = 0;
@@ -6808,13 +8224,25 @@
             // Load any stored continue key
             loadStoredContinueKey();
             bullets = []; enemies = []; particles = []; powerups = [];
-            bombs = []; walls = []; weaponPickups = []; mines = [];
+            bombs = []; walls = []; weaponPickups = []; mines = []; electricFences = [];
+            horizonBeams = []; magneticMines = []; mirrorDrones = [];
             player.x = logicalWidth / 2; player.y = logicalHeight - 80;
             spawnAccumulator = 0; powerupAccumulator = 0; bombAccumulator = 0;
             wallAccumulator = 0; weaponAccumulator = 0; spaceObjAccumulator = 0; mineAccumulator = 0;
             currentWeapon = 'pistol';
             unlockedWeapons = ['pistol'];
             laserActive = false;
+            laserAmmoTimer = 0;
+            // Reset all weapon ammo
+            weaponAmmo = {
+                pistol: Infinity,
+                machinegun: 0,
+                bazooka: 0,
+                laser: 0,
+                flak: 0,
+                disc: 0,
+                swarm: 0
+            };
             deactivateShield();
             ghostActive = false;
             lightningFlashAlpha = 0;
@@ -7048,16 +8476,27 @@
         }
 
         // === CONTROLS ===
+        const WEAPON_KEYS = ['pistol', 'machinegun', 'bazooka', 'laser', 'flak', 'disc', 'swarm'];
         document.addEventListener('keydown', (e) => {
             // Prevent key repeat for shooting - only fire on initial press
             if (e.code === 'Space' && !e.repeat && gameRunning && !gamePaused) { shoot(); e.preventDefault(); }
             keys[e.code] = true;
             if (e.code === 'KeyQ' && gameRunning && !gamePaused) { switchWeapon(); e.preventDefault(); }
+            if (e.code === 'KeyB' && !e.repeat && gameRunning && !gamePaused) { dropPlayerBomb(); e.preventDefault(); }
             if (e.code === 'KeyP' && gameRunning) { togglePause(); e.preventDefault(); }
             if (e.code === 'Escape' && gameRunning) {
                 if (gamePaused) resumeGame();
                 else pauseGame();
                 e.preventDefault();
+            }
+            // Number keys 1-7 to switch weapons directly
+            if (gameRunning && !gamePaused) {
+                const num = parseInt(e.key);
+                if (num >= 1 && num <= 7) {
+                    const weaponKey = WEAPON_KEYS[num - 1];
+                    if (weaponKey) switchToWeapon(weaponKey);
+                    e.preventDefault();
+                }
             }
         });
         document.addEventListener('keyup', (e) => {
