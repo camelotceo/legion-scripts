@@ -437,6 +437,7 @@ def find_match(player_id: str, mode: str, difficulty: str) -> dict:
         if data['id'] != player_id:
             # Found a match! Remove both from queue
             r.zrem(f"matchmaking:{mode}", entry)
+            r.delete(f"in_queue:{data['id']}")  # Also remove matched player's queue tracking
             leave_matchmaking(player_id)
 
             # Create room for them
