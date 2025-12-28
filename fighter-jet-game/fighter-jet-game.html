@@ -5031,7 +5031,7 @@
         function bossAttack() {
             if (!boss) return;
             const diff = getDiffSettings();
-            const bulletSpeed = -300 * diff.speedMult;
+            const bulletSpeedY = 5 * diff.speedMult; // Positive = downward (toward player)
 
             switch (boss.attackPattern) {
                 case 'spread':
@@ -5039,7 +5039,7 @@
                     for (let i = -2; i <= 2; i++) {
                         bullets.push({
                             x: boss.x + i * 20, y: boss.y + boss.height / 2,
-                            speed: bulletSpeed, vx: i * 50, isEnemy: true, type: 'boss', width: 12, height: 12
+                            vx: i * 0.8, vy: bulletSpeedY, isEnemy: true, type: 'boss', width: 12, height: 12
                         });
                     }
                     break;
@@ -5049,7 +5049,8 @@
                         const angle = (boss.phase + i * 45) * Math.PI / 180;
                         bullets.push({
                             x: boss.x, y: boss.y + boss.height / 2,
-                            speed: bulletSpeed * 0.8, vx: Math.cos(angle) * 150, isEnemy: true, type: 'boss', width: 10, height: 10
+                            vx: Math.cos(angle) * 2.5, vy: Math.sin(angle) * 2.5 + bulletSpeedY * 0.6,
+                            isEnemy: true, type: 'boss', width: 10, height: 10
                         });
                     }
                     boss.phase += 15;
@@ -5059,7 +5060,8 @@
                     for (let i = 0; i < 10; i++) {
                         bullets.push({
                             x: boss.x - 100 + i * 25, y: boss.y + boss.height / 2,
-                            speed: bulletSpeed, vx: Math.sin(i + boss.phase) * 30, isEnemy: true, type: 'boss', width: 8, height: 8
+                            vx: Math.sin(i + boss.phase) * 0.5, vy: bulletSpeedY,
+                            isEnemy: true, type: 'boss', width: 8, height: 8
                         });
                     }
                     boss.phase += 0.5;
@@ -5069,7 +5071,7 @@
                     for (let i = 0; i < 6; i++) {
                         bullets.push({
                             x: boss.x + (Math.random() - 0.5) * boss.width, y: boss.y + boss.height / 2,
-                            speed: bulletSpeed * (0.8 + Math.random() * 0.4), vx: (Math.random() - 0.5) * 200,
+                            vx: (Math.random() - 0.5) * 3, vy: bulletSpeedY * (0.8 + Math.random() * 0.4),
                             isEnemy: true, type: 'boss', width: 10, height: 10
                         });
                     }
@@ -5089,7 +5091,7 @@
                     for (let i = -3; i <= 3; i++) {
                         bullets.push({
                             x: boss.x + i * 25, y: boss.y + boss.height / 2,
-                            speed: bulletSpeed * 1.2, vx: i * 60, isEnemy: true, type: 'boss', width: 14, height: 14,
+                            vx: i * 1, vy: bulletSpeedY * 1.2, isEnemy: true, type: 'boss', width: 14, height: 14,
                             color: '#FF0080'
                         });
                     }
@@ -5098,7 +5100,8 @@
                         const angle = (boss.phase * 20 + i * 60) * Math.PI / 180;
                         bullets.push({
                             x: boss.x, y: boss.y + boss.height / 2,
-                            speed: bulletSpeed, vx: Math.cos(angle) * 200, isEnemy: true, type: 'boss', width: 12, height: 12,
+                            vx: Math.cos(angle) * 3.5, vy: Math.sin(angle) * 2 + bulletSpeedY * 0.8,
+                            isEnemy: true, type: 'boss', width: 12, height: 12,
                             color: '#00FFFF'
                         });
                     }
@@ -5107,7 +5110,7 @@
                         for (let i = 0; i < 4; i++) {
                             bullets.push({
                                 x: boss.x + (Math.random() - 0.5) * boss.width, y: boss.y + boss.height / 2,
-                                speed: bulletSpeed * (1 + Math.random() * 0.5), vx: (Math.random() - 0.5) * 300,
+                                vx: (Math.random() - 0.5) * 5, vy: bulletSpeedY * (1 + Math.random() * 0.5),
                                 isEnemy: true, type: 'boss', width: 10, height: 10, color: '#FFFF00'
                             });
                         }
@@ -5480,14 +5483,14 @@
 
             // Change movement pattern randomly every 3-6 seconds
             if (boss.patternTimer > boss.patternDuration) {
-                const patterns = ['random_waypoint', 'chase', 'zigzag', 'orbit', 'strafe'];
+                const patterns = ['random_waypoint', 'chase', 'zigzag', 'orbit', 'strafe', 'dive', 'advance'];
                 boss.movementMode = patterns[Math.floor(Math.random() * patterns.length)];
                 boss.patternDuration = 3 + Math.random() * 3;
                 boss.patternTimer = 0;
-                // Set new waypoint
+                // Set new waypoint - can go further down the screen now
                 boss.waypoint = {
                     x: 100 + Math.random() * (logicalWidth - 200),
-                    y: 80 + Math.random() * 150
+                    y: 80 + Math.random() * 250  // Can go down to Y=330
                 };
             }
 
@@ -5546,11 +5549,36 @@
                     }
                     boss.y = boss.targetY + Math.sin(boss.moveTimer * 2) * 20;
                     break;
+
+                case 'dive':
+                    // Aggressive dive toward player then retreat
+                    if (!boss.divePhase) boss.divePhase = 0;
+                    boss.divePhase += dt;
+                    if (boss.divePhase < 1.5) {
+                        // Dive down toward player
+                        boss.y += moveSpeed * dt * 1.2;
+                        boss.x += (player.x - boss.x) * dt * 0.8;
+                    } else if (boss.divePhase < 3) {
+                        // Retreat back up
+                        boss.y -= moveSpeed * dt * 0.8;
+                    } else {
+                        boss.divePhase = 0;
+                    }
+                    break;
+
+                case 'advance':
+                    // Slowly advance toward player, maintaining pressure
+                    const targetY = Math.min(player.y - 150, 350); // Stay above player
+                    const advanceDy = targetY - boss.y;
+                    boss.y += Math.sign(advanceDy) * Math.min(Math.abs(advanceDy), moveSpeed * dt * 0.5);
+                    // Sway side to side while advancing
+                    boss.x += Math.sin(boss.moveTimer * 2) * moveSpeed * dt * 0.5;
+                    break;
             }
 
-            // Keep boss in bounds
+            // Keep boss in bounds - expanded vertical range
             boss.x = Math.max(boss.width / 2 + 20, Math.min(logicalWidth - boss.width / 2 - 20, boss.x));
-            boss.y = Math.max(60, Math.min(250, boss.y));
+            boss.y = Math.max(60, Math.min(380, boss.y)); // Can go further down (up to Y=380)
 
             // Shooting
             boss.shootTimer -= dt;
@@ -5773,6 +5801,7 @@
 
                 // Mark boss as defeated and advance level
                 bossDefeated.push(level);
+                killsThisLevel = 0; // Reset kills for next level's boss
 
                 // Cleanup boss
                 boss = null;
@@ -7333,9 +7362,15 @@
             // All possible weapons in order
             const allWeapons = ['pistol', 'machinegun', 'bazooka', 'laser', 'flak', 'disc', 'swarm'];
 
-            panel.innerHTML = allWeapons.map((weaponKey, index) => {
+            // Filter to only show weapons the player has unlocked AND has ammo for
+            const availableWeapons = allWeapons.filter(weaponKey => {
+                if (!unlockedWeapons.includes(weaponKey)) return false;
+                if (weaponKey === 'pistol') return true; // Always show pistol
+                return weaponAmmo[weaponKey] > 0; // Only show if has ammo
+            });
+
+            panel.innerHTML = availableWeapons.map((weaponKey) => {
                 const weapon = WEAPONS[weaponKey];
-                const isUnlocked = unlockedWeapons.includes(weaponKey);
                 const ammo = weaponKey === 'pistol' ? Infinity : weaponAmmo[weaponKey];
                 const isActive = currentWeapon === weaponKey;
                 const ammoDisplay = ammo === Infinity ? '∞' : ammo;
@@ -7344,18 +7379,12 @@
                 // Determine slot classes
                 let classes = 'weapon-slot';
                 if (isActive) classes += ' active';
-                if (!isUnlocked) classes += ' empty';
-                else if (ammo !== Infinity && ammo <= 0) classes += ' no-ammo';
-                else if (ammo !== Infinity && ammo <= 10) classes += ' low-ammo';
-
-                // Only make tappable if unlocked and has ammo (or is pistol)
-                const canSelect = isUnlocked && (ammo > 0 || ammo === Infinity);
-                const dataAttr = canSelect ? `data-weapon="${weaponKey}"` : '';
+                if (ammo !== Infinity && ammo <= 10) classes += ' low-ammo';
 
                 return `
-                    <div class="${classes}" ${dataAttr} title="${weapon.name} [${index + 1}]">
+                    <div class="${classes}" data-weapon="${weaponKey}" title="${weapon.name}">
                         <div class="weapon-icon">${icon}</div>
-                        <div class="weapon-ammo">${isUnlocked ? ammoDisplay : '-'}</div>
+                        <div class="weapon-ammo">${ammoDisplay}</div>
                     </div>
                 `;
             }).join('');
