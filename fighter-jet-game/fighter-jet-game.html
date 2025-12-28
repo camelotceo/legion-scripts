@@ -2693,6 +2693,7 @@
                 const data = await response.json();
                 if (data.success) {
                     myPlayerId = usedPlayerId; // Ensure myPlayerId is set
+                    myPlayerName = playerName; // Ensure myPlayerName is set
                     currentRoomCode = data.roomCode;
                     isRoomHost = true;
                     isPlayerReady = false;
@@ -2731,6 +2732,7 @@
                 const data = await response.json();
                 if (data.success) {
                     myPlayerId = usedPlayerId; // Ensure myPlayerId is set
+                    myPlayerName = playerName; // Ensure myPlayerName is set
                     currentRoomCode = code;
                     isRoomHost = false;
                     isPlayerReady = false;
@@ -2958,6 +2960,7 @@
                 if (data.matched) {
                     // Found a match immediately
                     myPlayerId = usedPlayerId; // Ensure myPlayerId is set
+                    myPlayerName = playerName; // Ensure myPlayerName is set
                     currentRoomCode = data.room_code;
                     isRoomHost = false;
                     isPlayerReady = false;
@@ -2968,6 +2971,7 @@
                     connectWebSocket();
                 } else {
                     myPlayerId = usedPlayerId; // Ensure myPlayerId is set for queue polling
+                    myPlayerName = playerName; // Ensure myPlayerName is set
                     // In queue, start polling
                     document.getElementById('queuePosition').textContent = `Position in queue: ${data.queue_position || 1}`;
                     startMatchmakingPolling();
@@ -3048,7 +3052,7 @@
                         mpSocket.emit('join_game', {
                             roomCode: currentRoomCode,
                             playerId: myPlayerId,
-                            playerName: playerName || 'Player'
+                            playerName: myPlayerName || 'Player'
                         });
                     }
                 });
