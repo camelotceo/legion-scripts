@@ -3084,6 +3084,14 @@
                     handleIncomingHazard(data);
                 });
 
+                // Direct listener for game_started (backup for non-host players)
+                mpSocket.on('game_started', (data) => {
+                    console.log('Received game_started event:', data);
+                    if (!isRoomHost) {
+                        launchMultiplayerGame(null);
+                    }
+                });
+
             } catch (err) {
                 console.error('WebSocket connection error:', err);
             }
@@ -8219,6 +8227,9 @@
             document.getElementById('startScreen').classList.add('hidden');
             document.getElementById('gameOverScreen').classList.add('hidden');
             document.getElementById('lobbySidebar').style.display = 'none';
+            // Also hide multiplayer lobby modal
+            document.getElementById('lobbyModal').classList.remove('show');
+            document.getElementById('modeSelectModal').classList.remove('show');
 
             const diff = getDiffSettings();
             score = 0;
