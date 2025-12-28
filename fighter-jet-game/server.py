@@ -18,11 +18,77 @@ import string
 import time
 import hashlib
 import re
+import logging
+import traceback
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
 from pathlib import Path
 from datetime import datetime
+
+# === ERROR LOGGING SETUP ===
+LOG_DIR = Path(__file__).parent / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
+# Configure file logging
+file_handler = logging.FileHandler(LOG_DIR / 'error.log')
+file_handler.setLevel(logging.ERROR)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s | %(levelname)s | %(message)s\n%(exc_info)s\n---'
+))
+
+# Configure general log
+general_handler = logging.FileHandler(LOG_DIR / 'server.log')
+general_handler.setLevel(logging.INFO)
+general_handler.setFormatter(logging.Formatter(
+    '%(asctime)s | %(levelname)s | %(message)s'
+))
+
+# Setup logger
+logger = logging.getLogger('fighter_jet')
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+logger.addHandler(general_handler)
+
+# Also log to console
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s'))
+logger.addHandler(console_handler)
+
+
+def log_error(endpoint: str, error: Exception, extra_info: dict = None):
+    """Log an error with context."""
+    error_data = {
+        'endpoint': endpoint,
+        'error_type': type(error).__name__,
+        'error_message': str(error),
+        'traceback': traceback.format_exc(),
+        'timestamp': datetime.now().isoformat(),
+        'ip': get_client_ip() if request else 'N/A',
+    }
+    if extra_info:
+        error_data.update(extra_info)
+
+    logger.error(f"[{endpoint}] {type(error).__name__}: {error}", exc_info=True)
+
+    # Also append to JSON log for easy parsing
+    try:
+        json_log = LOG_DIR / 'errors.json'
+        errors = []
+        if json_log.exists():
+            try:
+                with open(json_log, 'r') as f:
+                    errors = json.load(f)
+            except:
+                errors = []
+        errors.append(error_data)
+        # Keep last 1000 errors
+        errors = errors[-1000:]
+        with open(json_log, 'w') as f:
+            json.dump(errors, f, indent=2, default=str)
+    except Exception as e:
+        logger.warning(f"Failed to write to JSON error log: {e}")
 
 # Email service
 try:
@@ -1507,10 +1573,11 @@ def check_player_name():
 @app.route('/api/player/request-key', methods=['POST'])
 @rate_limit('request_key', by='ip')
 def request_continue_key():
-    """Request a continue key - gets existing key or creates new one, sends to email.
+    """Request a continue key - gets existing key or creates new one.
 
-    Key is ONLY sent via email, not returned in response.
+    Key is returned in response AND sent via email.
     Each player has ONE key that tracks their progress.
+    Key should be stored in sessionStorage (cleared when session ends).
     """
     data = request.get_json() or {}
     name = str(data.get('name', '')).strip()[:12].lower()
@@ -1518,6 +1585,8 @@ def request_continue_key():
     level = int(data.get('level', 1))
     score = int(data.get('score', 0))
     difficulty = str(data.get('difficulty', 'EASY'))[:10].upper()
+
+    logger.info(f"Continue key requested: name={name}, email={email}, level={level}")
 
     if not name:
         return jsonify({'error': 'Name required'}), 400
@@ -1539,6 +1608,7 @@ def request_continue_key():
                     ip_address=get_client_ip(),
                     email=email
                 )
+                logger.info(f"Created new player: {name}")
             else:
                 # Update email if not set
                 if not player.get('email'):
@@ -1553,109 +1623,120 @@ def request_continue_key():
                 ip_address=get_client_ip()
             )
 
-            # If existing key, we can't recover it - tell user to check email
-            # If new key, send the key via email
+            # If existing key, we can't recover it - create new one
             if key_data['is_existing']:
-                # Player already has a key - they need to check their email
-                # We can resend the key if we store it unhashed, but we don't
-                # For now, tell them the key was already sent
-                return jsonify({
-                    'success': True,
-                    'emailSent': False,
-                    'message': 'You already have a continue key. Check your email or enter the key you received.',
-                    'keySuffix': key_data['key_suffix'],
-                    'respawnsRemaining': key_data['respawns_remaining']
-                })
+                # Player already has an exhausted or existing key - create fresh one
+                # Clear existing keys first
+                key_data = database.create_continue_key(
+                    player_id=str(player['id']),
+                    level=level,
+                    score=score,
+                    difficulty=difficulty,
+                    ip_address=get_client_ip()
+                )
+                logger.info(f"Created new continue key for {name}")
 
-            # New key - send email (key is NOT returned in response)
-            email_sent = send_continue_key_email(email, key_data['key'], name, level)
+            the_key = key_data.get('key')
+            if not the_key:
+                logger.error(f"No key returned from database for {name}")
+                return jsonify({'error': 'Failed to generate key'}), 500
+
+            # Send email as backup
+            email_sent = send_continue_key_email(email, the_key, name, level)
+            logger.info(f"Email sent: {email_sent} to {email}")
 
             # Audit log
             database.log_audit(
                 action='continue_key_requested',
                 player_id=str(player['id']),
                 ip_address=get_client_ip(),
-                new_value={'level': level, 'score': score}
+                new_value={'level': level, 'score': score, 'email_sent': email_sent}
             )
 
+            # Return key in response (display on screen)
             return jsonify({
                 'success': True,
+                'key': the_key,  # Return the key to display on screen
                 'emailSent': email_sent,
-                'message': 'Continue key sent to your email!' if email_sent else 'Failed to send email',
+                'message': 'Your continue key is ready!' if email_sent else 'Key generated (email failed)',
                 'respawnsRemaining': 3
             })
 
         except Exception as e:
-            print(f"Database error requesting key: {e}")
+            log_error('request_continue_key', e, {'name': name, 'email': email, 'level': level})
             # Fall through to JSON fallback
 
     # Fallback to JSON storage
     progress = load_player_progress()
 
-    # Check if player already has an active key
+    # Check if player already has an active key with respawns left
+    existing_key = None
     if name in progress and progress[name].get('keys'):
         active_keys = [k for k in progress[name]['keys']
                        if not k.get('used', False) and k.get('respawnsRemaining', 0) > 0]
         if active_keys:
-            # Player already has a key
-            return jsonify({
-                'success': True,
-                'emailSent': False,
-                'message': 'You already have a continue key. Check your email or enter the key you received.',
-                'respawnsRemaining': active_keys[0].get('respawnsRemaining', 3)
-            })
+            existing_key = active_keys[0]['key']
 
-    # Generate new key (old 6-char format for fallback)
-    key = generate_continue_key_legacy()
+    # Use existing key or generate new one
+    if existing_key:
+        key = existing_key
+        respawns_remaining = next(
+            (k.get('respawnsRemaining', 3) for k in progress[name]['keys'] if k['key'] == key), 3
+        )
+    else:
+        # Generate new key (old 6-char format for fallback)
+        key = generate_continue_key_legacy()
+        respawns_remaining = 3
 
-    # Store player progress
-    if name not in progress:
-        progress[name] = {
-            'email': email,
-            'keys': [],
-            'currentLevel': level,
-            'currentScore': score,
-            'difficulty': difficulty,
-            'respawnsUsed': {},
-            'totalRespawns': 0,
-            'keyRequests': 0,
-            'history': [],
-            'createdAt': datetime.now().isoformat()
-        }
+        # Store player progress
+        if name not in progress:
+            progress[name] = {
+                'email': email,
+                'keys': [],
+                'currentLevel': level,
+                'currentScore': score,
+                'difficulty': difficulty,
+                'respawnsUsed': {},
+                'totalRespawns': 0,
+                'keyRequests': 0,
+                'history': [],
+                'createdAt': datetime.now().isoformat()
+            }
 
-    # Update player data
-    player_data = progress[name]
-    player_data['email'] = email
-    player_data['currentLevel'] = level
-    player_data['currentScore'] = score
-    player_data['difficulty'] = difficulty
-    player_data['keys'].append({
-        'key': key,
-        'level': level,
-        'createdAt': datetime.now().isoformat(),
-        'used': False,
-        'respawnsRemaining': 3
-    })
-    player_data['keyRequests'] += 1
-    player_data['history'].append({
-        'action': 'key_requested',
-        'level': level,
-        'score': score,
-        'timestamp': datetime.now().isoformat()
-    })
+        # Update player data
+        player_data = progress[name]
+        player_data['email'] = email
+        player_data['currentLevel'] = level
+        player_data['currentScore'] = score
+        player_data['difficulty'] = difficulty
+        player_data['keys'].append({
+            'key': key,
+            'level': level,
+            'createdAt': datetime.now().isoformat(),
+            'used': False,
+            'respawnsRemaining': 3
+        })
+        player_data['keyRequests'] += 1
+        player_data['history'].append({
+            'action': 'key_requested',
+            'level': level,
+            'score': score,
+            'timestamp': datetime.now().isoformat()
+        })
 
-    player_data['respawnsUsed'][str(level)] = 0
+        player_data['respawnsUsed'][str(level)] = 0
+        save_player_progress(progress)
 
-    save_player_progress(progress)
-
-    # Send email (key NOT returned in response)
+    # Send email as backup
     email_sent = send_continue_key_email(email, key, name, level)
 
+    # Return key in response (display on screen)
     return jsonify({
         'success': True,
+        'key': key,  # Return the key to display on screen
         'emailSent': email_sent,
-        'message': 'Continue key sent to your email!' if email_sent else 'Failed to send email',
-        'respawnsRemaining': FREE_RESPAWNS_PER_LEVEL
+        'message': 'Your continue key is ready!',
+        'respawnsRemaining': respawns_remaining
     })
 
 

@@ -37,21 +37,19 @@
         #muteButton.muted { background: rgba(255, 100, 100, 0.3); border-color: rgba(255, 100, 100, 0.7); }
         #quitButton { background: rgba(255, 100, 100, 0.3); border-color: rgba(255, 100, 100, 0.7); margin-top: 5px; }
         #quitButton:hover { background: rgba(255, 100, 100, 0.5); }
-        /* Weapon Panel - Horizontal bar at bottom */
+        /* Weapon Panel - Above chat bar, outside game canvas */
         #weaponPanel {
-            position: absolute;
-            bottom: 8px;
-            left: 50%;
-            transform: translateX(-50%);
             display: flex;
             flex-direction: row;
             gap: 6px;
-            pointer-events: auto;
-            z-index: 50;
+            justify-content: center;
             padding: 6px 10px;
-            background: rgba(0, 0, 0, 0.5);
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid rgba(100, 170, 255, 0.3);
+            border-radius: 8px;
+            margin: 8px auto;
+            width: fit-content;
+            max-width: 95%;
         }
         .weapon-slot {
             background: rgba(0, 0, 0, 0.6);
@@ -110,7 +108,6 @@
             #weaponPanel {
                 gap: 4px;
                 padding: 5px 8px;
-                bottom: 60px; /* Above touch controls */
             }
             .weapon-slot {
                 min-width: 38px;
@@ -646,8 +643,6 @@
                 <span>Lives: <span id="lives">3</span></span>
             </div>
         </div>
-        <!-- Weapon Panel -->
-        <div id="weaponPanel"></div>
         <!-- Coop Mode HUD -->
         <div id="coopHud" style="display:none; position:absolute; top:10px; left:10px; right:10px; color:#fff; font-size:14px; text-shadow:2px 2px 4px rgba(0,0,0,0.5);">
             <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -970,22 +965,22 @@
                 <!-- Email required section (hidden initially) -->
                 <div id="emailSection" style="display: none;">
                     <p class="respawn-info">You've used all free respawns for this level.</p>
-                    <p class="respawn-info">Enter your email to receive a continue key:</p>
+                    <p class="respawn-info">Enter your email to get a continue key:</p>
                     <div class="email-section">
                         <input type="email" class="email-input" id="respawnEmail" placeholder="your@email.com">
-                        <button class="btn-respawn" id="sendKeyBtn" onclick="requestContinueKey()">Send Key</button>
+                        <button class="btn-respawn" id="sendKeyBtn" onclick="requestContinueKey()">Get Key</button>
                     </div>
                     <p id="emailError" class="error-msg" style="display: none;"></p>
                 </div>
 
                 <!-- Key received section (hidden initially) -->
                 <div id="keyReceivedSection" style="display: none;">
-                    <p class="respawn-info">Key sent! Check your email.</p>
+                    <p class="respawn-info">Your continue key (also sent to email):</p>
                     <div class="key-display">
-                        <p style="color: #aaa; margin-bottom: 5px;">Your Continue Key:</p>
-                        <span class="key-code" id="displayedKey">FJ-XXXXXX</span>
+                        <span class="key-code" id="displayedKey" style="font-size: 24px;">FJ-XXXXXXXXX</span>
                     </div>
-                    <input type="text" class="key-input" id="respawnKeyInput" placeholder="FJ-XXXXXXXXX" maxlength="12">
+                    <p style="color: #888; font-size: 11px; margin: 8px 0;">Key is saved for this session. Click Continue to respawn.</p>
+                    <input type="text" class="key-input" id="respawnKeyInput" placeholder="FJ-XXXXXXXXX" maxlength="15" style="display: none;">
                     <button class="btn-respawn" onclick="validateAndContinue()">Continue</button>
                 </div>
 
@@ -1076,6 +1071,9 @@
             <button class="pause-btn quit" onclick="quitFromPause()">Quit Game</button>
         </div>
     </div>
+
+        <!-- Weapon Panel (Above chat bar) -->
+        <div id="weaponPanel"></div>
 
         <!-- Chat Bar (Bottom) -->
         <div id="chatBar">
@@ -4242,7 +4240,7 @@
             }
 
             document.getElementById('sendKeyBtn').disabled = true;
-            document.getElementById('sendKeyBtn').textContent = 'Sending...';
+            document.getElementById('sendKeyBtn').textContent = 'Getting Key...';
             document.getElementById('emailError').style.display = 'none';
 
             try {
@@ -4260,36 +4258,44 @@
 
                 const data = await response.json();
 
-                if (data.success) {
-                    // Key is sent to email only - NOT displayed on screen
-                    // Show key input section so player can enter key from email
+                if (data.success && data.key) {
+                    // Display the key on screen and pre-populate the input
                     document.getElementById('emailSection').style.display = 'none';
                     document.getElementById('keyReceivedSection').style.display = 'block';
-                    document.getElementById('displayedKey').textContent = 'Check your email!';
-                    document.getElementById('respawnKeyInput').value = '';
-                    document.getElementById('respawnMessage').textContent = data.message || 'Key sent to your email! Enter it below.';
+                    document.getElementById('displayedKey').textContent = data.key;
+                    document.getElementById('respawnKeyInput').value = data.key;
+                    document.getElementById('respawnMessage').textContent = 'Your continue key (also sent to email):';
+
+                    // Store in sessionStorage (cleared when browser session ends)
+                    sessionStorage.setItem('continueKey', data.key);
+                    sessionStorage.setItem('continueKeyPlayer', myPlayerName);
                 } else {
-                    document.getElementById('emailError').textContent = data.error || 'Failed to send key';
+                    document.getElementById('emailError').textContent = data.error || 'Failed to get key';
                     document.getElementById('emailError').style.display = 'block';
                 }
             } catch (e) {
                 document.getElementById('emailError').textContent = 'Network error. Please try again.';
                 document.getElementById('emailError').style.display = 'block';
+                console.error('Request key error:', e);
             }
 
             document.getElementById('sendKeyBtn').disabled = false;
-            document.getElementById('sendKeyBtn').textContent = 'Send Key';
+            document.getElementById('sendKeyBtn').textContent = 'Get Key';
         }
 
         async function validateAndContinue() {
-            const key = document.getElementById('respawnKeyInput').value.trim().toUpperCase();
+            // Get key from input or from sessionStorage
+            let key = document.getElementById('respawnKeyInput').value.trim().toUpperCase();
+            if (!key) {
+                key = sessionStorage.getItem('continueKey');
+            }
             if (!key) {
                 alert('Please enter a continue key.');
                 return;
             }
 
-            // Accept both old 6-char keys and new 9-char keys
-            if (!key.match(/^FJ-[A-Z0-9]{6,9}$/)) {
+            // Accept both old 6-char keys and new 12-char keys
+            if (!key.match(/^FJ-[A-Z0-9]{6,12}$/)) {
                 alert('Invalid key format. Keys should be like FJ-XXXXXXXXX');
                 return;
             }
@@ -4304,8 +4310,9 @@
                 const data = await response.json();
 
                 if (data.valid) {
-                    // Store key for future auto-continues
-                    storeCurrentContinueKey(key);
+                    // Store key for future auto-continues (in sessionStorage)
+                    sessionStorage.setItem('continueKey', key);
+                    sessionStorage.setItem('continueKeyPlayer', myPlayerName);
                     continuesUsedThisLevel++;
 
                     // Respawn
@@ -4316,6 +4323,7 @@
                 }
             } catch (e) {
                 alert('Network error. Please try again.');
+                console.error('Validate key error:', e);
             }
         }
 
