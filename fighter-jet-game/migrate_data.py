@@ -123,7 +123,7 @@ def migrate_leaderboard(conn):
             game_session_id = generate_uuid()
             cur.execute("""
                 INSERT INTO game_sessions
-                (id, player_id, difficulty, game_mode, started_at, ended_at, duration_seconds,
+                (id, player_id, difficulty, game_mode, started_at, ended_at, duration,
                  final_score, final_level, is_complete, score_validated, validation_score)
                 VALUES (%s, %s, %s, 'single', %s, %s, %s, %s, %s, true, true, %s)
             """, (
@@ -134,7 +134,7 @@ def migrate_leaderboard(conn):
             # Create leaderboard entry
             cur.execute("""
                 INSERT INTO leaderboard_entries
-                (player_id, game_session_id, score, duration_seconds, level, difficulty,
+                (player_id, game_session_id, score, duration, level, difficulty,
                  is_validated, validated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, true, %s)
                 ON CONFLICT DO NOTHING
