@@ -9,7 +9,7 @@ import secrets
 import hashlib
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from typing import Optional, Dict, List, Any
 import bcrypt
@@ -748,12 +748,14 @@ def validate_continue_key(key: str, ip_address: str = None) -> Optional[Dict]:
             if not key_record:
                 return None
 
+            now = datetime.now(timezone.utc)
+
             # Check if expired
-            if key_record['expires_at'] and key_record['expires_at'] < datetime.now():
+            if key_record['expires_at'] and key_record['expires_at'] < now:
                 return {'error': 'Key expired', 'valid': False}
 
             # Check if locked
-            if key_record['locked_until'] and key_record['locked_until'] > datetime.now():
+            if key_record['locked_until'] and key_record['locked_until'] > now:
                 return {'error': 'Key temporarily locked', 'valid': False}
 
             # Check if exhausted
