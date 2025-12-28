@@ -243,7 +243,7 @@ def migrate_player_progress(conn):
                 INSERT INTO continue_keys
                 (id, player_id, key_hash, key_suffix, saved_level, saved_score,
                  saved_difficulty, total_respawns, respawns_used, created_from_ip)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 3, 0, 'migrated')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 3, 0, NULL)
             """, (
                 generate_uuid(), player_id, key_hash, key_suffix,
                 current_level, current_score, difficulty
