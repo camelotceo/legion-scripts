@@ -1585,16 +1585,26 @@
                             console.log('Registered as:', myPlayerName, 'ID:', myPlayerId);
                         }
                     } else if (regResponse.status === 409) {
-                        // Username taken - show error
+                        // Username taken - show error and stop
                         const data = await regResponse.json();
                         console.warn('Username taken:', data.error);
+                        showNotification('Username "' + nameToUse + '" is taken. Try another name.');
                         if (data.suggestion && nameInput) {
                             nameInput.value = data.suggestion;
+                            nameInput.focus();
+                            nameInput.select();
                         }
+                        return false; // Don't continue - user must pick new name
                     }
                 }
             } catch (e) {
                 console.error('Auth error:', e);
+            }
+
+            // Only register with live players if we have a valid player
+            if (!myPlayerId) {
+                console.warn('No player ID, cannot join live system');
+                return false;
             }
 
             // Also register with live players system (for spectating)
@@ -2438,15 +2448,21 @@
             }
         }
 
-        // Clear auth state
+        // Clear auth state - clears ALL session data
         function clearAuthState() {
             try {
+                // Clear sessionStorage
                 sessionStorage.removeItem('authToken');
                 sessionStorage.removeItem('currentPlayer');
+                // Clear localStorage
+                localStorage.removeItem('sessionToken');
+                localStorage.removeItem('playerName');
             } catch (e) {}
             sessionToken = null;
             currentPlayer = null;
             isAuthenticated = false;
+            myPlayerId = null;
+            myPlayerName = '';
             updateAuthUI();
         }
 
@@ -9051,7 +9067,15 @@
             }
             // Leave old session first (in case of Play Again), then join as new player
             await leaveAsPlayer();
-            await joinAsPlayer();
+            const joined = await joinAsPlayer();
+
+            // If join failed (e.g., username taken), stop game and go back to start screen
+            if (!joined) {
+                gameRunning = false;
+                document.getElementById('startScreen').classList.remove('hidden');
+                stopBackgroundMusic();
+                return;
+            }
 
             // Start server-side game session for score validation
             await startServerGameSession();
