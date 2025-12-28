@@ -28,16 +28,37 @@ python3 server.py
 **Production Server:** felican.ai (SSH: `ssh felican.ai`)
 **Path:** `/home/dev/legion-scripts/fighter-jet-game`
 
+### Deployment Steps (MUST FOLLOW ALL STEPS)
+
 ```bash
-# Deploy changes
+# 1. Commit and push changes
 git add . && git commit -m "message" && git push origin main
+
+# 2. Pull changes on production
 ssh felican.ai "cd /home/dev/legion-scripts/fighter-jet-game && git pull origin main"
 
-# Rebuild containers (if Python files changed)
+# 3. Restart container (ALWAYS required for HTML changes to take effect reliably)
+ssh felican.ai "docker compose -f /home/dev/legion-scripts/fighter-jet-game/docker-compose.yml restart fighter-jet-game"
+
+# 4. VERIFY deployment - check that changes are actually in the container
+ssh felican.ai "docker exec fighter-jet-game grep 'UNIQUE_STRING_FROM_YOUR_CHANGE' /app/fighter-jet-game.html"
+```
+
+### When to Rebuild (not just restart)
+
+```bash
+# If Python files changed (server.py, database.py, etc.)
 ssh felican.ai "cd /home/dev/legion-scripts/fighter-jet-game && docker compose build --no-cache && docker compose up -d"
 ```
 
-**Note:** HTML-only changes take effect immediately after `git pull` (volume mounted).
+### CRITICAL: Always Verify Deployments
+
+**After EVERY deployment, you MUST:**
+1. Restart or rebuild the container
+2. Verify changes are live by grepping for a unique string from your changes inside the container
+3. Only report deployment as complete after verification passes
+
+**Do NOT assume volume mounts reflect changes immediately - always restart and verify.**
 
 ## Architecture
 
