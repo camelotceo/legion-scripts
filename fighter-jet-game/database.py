@@ -599,6 +599,108 @@ def get_game_events(game_session_id: str) -> List[Dict]:
 # CONTINUE KEYS
 # =============================================================================
 
+def get_or_create_player_key(player_id: str, level: int, score: int, difficulty: str,
+                              ip_address: str = None) -> Dict:
+    """Get existing active key for player, or create a new one.
+
+    Each player has ONE continue key that tracks their progress.
+    If they have an active key, return it. Otherwise create a new one.
+    """
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Check for existing active key (not expired, not exhausted)
+            cur.execute(
+                """SELECT id, key_suffix, saved_level, saved_score, saved_difficulty,
+                          total_respawns, respawns_used
+                   FROM continue_keys
+                   WHERE player_id = %s
+                     AND (expires_at IS NULL OR expires_at > NOW())
+                     AND respawns_used < total_respawns
+                   ORDER BY created_at DESC
+                   LIMIT 1""",
+                (player_id,)
+            )
+            existing = cur.fetchone()
+
+            if existing:
+                # Update the saved progress on existing key
+                cur.execute(
+                    """UPDATE continue_keys SET
+                       saved_level = %s,
+                       saved_score = %s,
+                       saved_difficulty = %s
+                       WHERE id = %s""",
+                    (level, score, difficulty.upper(), existing['id'])
+                )
+                # We can't return the full key (it's hashed), but we return the suffix
+                # The user must get the key from email
+                return {
+                    'key_id': str(existing['id']),
+                    'key': None,  # Can't recover - must use email
+                    'key_suffix': existing['key_suffix'],
+                    'level': level,
+                    'score': score,
+                    'difficulty': difficulty,
+                    'is_existing': True,
+                    'respawns_remaining': existing['total_respawns'] - existing['respawns_used']
+                }
+
+            # No active key - create new one
+            key_data = generate_continue_key()
+            cur.execute(
+                """INSERT INTO continue_keys
+                   (player_id, key_hash, key_suffix, saved_level, saved_score,
+                    saved_difficulty, created_from_ip)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                (player_id, key_data['key_hash'], key_data['key_suffix'],
+                 level, score, difficulty.upper(), ip_address)
+            )
+            key_id = cur.fetchone()['id']
+
+            return {
+                'key_id': str(key_id),
+                'key': key_data['display_key'],
+                'key_suffix': key_data['key_suffix'],
+                'level': level,
+                'score': score,
+                'difficulty': difficulty,
+                'is_existing': False,
+                'respawns_remaining': 3
+            }
+
+
+def update_player_key_progress(player_id: str, level: int, score: int, difficulty: str) -> bool:
+    """Update the saved progress on a player's active continue key."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE continue_keys SET
+                   saved_level = %s,
+                   saved_score = %s,
+                   saved_difficulty = %s
+                   WHERE player_id = %s
+                     AND (expires_at IS NULL OR expires_at > NOW())
+                     AND respawns_used < total_respawns""",
+                (level, score, difficulty.upper(), player_id)
+            )
+            return cur.rowcount > 0
+
+
+def reset_player_key_respawns(player_id: str) -> bool:
+    """Reset respawns on player's key (called when starting a new level)."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE continue_keys SET
+                   respawns_used = 0
+                   WHERE player_id = %s
+                     AND (expires_at IS NULL OR expires_at > NOW())""",
+                (player_id,)
+            )
+            return cur.rowcount > 0
+
+
 def create_continue_key(player_id: str, level: int, score: int, difficulty: str,
                         ip_address: str = None) -> Dict:
     """Create a new continue key for a player."""

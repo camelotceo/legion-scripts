@@ -2290,18 +2290,49 @@
         let score = 0;
         let lives = 3;
         let level = 1;
-        // Boss spawn thresholds: 1k, 3k, 5k, 7k, 9k, 11k
-        const bossThresholds = { 1: 1000, 2: 3000, 3: 5000, 4: 7000, 5: 9000, 6: 11000 };
+        // Boss spawns after 25 kills per level
+        const KILLS_FOR_BOSS = 25;
+        let killsThisLevel = 0; // Track kills for current level
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 850;
         let isInvincible = false; // Debug mode for unlimited lives
         let totalEnemiesKilled = 0; // Track for ending stats
 
         // === RESPAWN SYSTEM ===
-        const FREE_RESPAWNS_PER_LEVEL = 3;
-        let respawnsUsedThisLevel = 0;
+        const MAX_CONTINUES_PER_LEVEL = 3;
+        let continuesUsedThisLevel = 0;
+        let respawnsUsedThisLevel = 0; // Legacy - keep for compatibility
         let playerHasKey = false;
         let currentContinueKey = null;
         let savedLevelScore = 0; // Score at start of current level
+
+        // Load stored continue key from localStorage (persists across page reloads within session)
+        function loadStoredContinueKey() {
+            try {
+                const stored = sessionStorage.getItem('continueKey');
+                if (stored) {
+                    currentContinueKey = stored;
+                    playerHasKey = true;
+                    return true;
+                }
+            } catch (e) {}
+            return false;
+        }
+
+        function storeCurrentContinueKey(key) {
+            try {
+                sessionStorage.setItem('continueKey', key);
+                currentContinueKey = key;
+                playerHasKey = true;
+            } catch (e) {}
+        }
+
+        function clearStoredContinueKey() {
+            try {
+                sessionStorage.removeItem('continueKey');
+            } catch (e) {}
+            currentContinueKey = null;
+            playerHasKey = false;
+        }
 
         // === LEVEL SPEED MULTIPLIERS ===
         const levelSpeeds = { 1: 1.0, 2: 1.2, 3: 1.4, 4: 1.6, 5: 1.8, 6: 2.2 };
@@ -3852,7 +3883,10 @@
             }
 
             totalEnemiesKilled = 0;
+            killsThisLevel = 0;
+            continuesUsedThisLevel = 0;
             respawnsUsedThisLevel = 0;
+            savedLevelScore = score;
             bullets = []; enemies = []; particles = []; powerups = [];
             bombs = []; walls = []; weaponPickups = []; mines = [];
             player.x = logicalWidth / 2; player.y = logicalHeight - 80;
@@ -3921,34 +3955,37 @@
 
         // === RESPAWN MODAL FUNCTIONS ===
         function showRespawnModal() {
+            // Check if player has a stored continue key - auto-continue if possible
+            if (playerHasKey && currentContinueKey) {
+                // Auto-continue using stored key
+                autoContinueWithKey();
+                return;
+            }
+
             // Update display
             document.getElementById('respawnLevel').textContent = level;
             document.getElementById('respawnScore').textContent = score.toLocaleString();
 
-            // Update lives indicators
+            // Update lives indicators - show continues used
             const livesContainer = document.getElementById('respawnLives');
             let livesHtml = '';
-            for (let i = 0; i < FREE_RESPAWNS_PER_LEVEL; i++) {
-                const used = i < respawnsUsedThisLevel;
+            for (let i = 0; i < MAX_CONTINUES_PER_LEVEL; i++) {
+                const used = i < continuesUsedThisLevel;
                 livesHtml += `<div class="life ${used ? 'used' : ''}"></div>`;
             }
             livesContainer.innerHTML = livesHtml;
 
-            const remaining = FREE_RESPAWNS_PER_LEVEL - respawnsUsedThisLevel;
+            const remaining = MAX_CONTINUES_PER_LEVEL - continuesUsedThisLevel;
             document.getElementById('respawnsRemaining').textContent = remaining;
 
-            // Show appropriate section
-            document.getElementById('freeRespawnSection').style.display = remaining > 0 ? 'block' : 'none';
-            document.getElementById('emailSection').style.display = remaining <= 0 ? 'block' : 'none';
+            // If player has no key, they must get one from email
+            document.getElementById('freeRespawnSection').style.display = 'none';
+            document.getElementById('emailSection').style.display = 'block';
             document.getElementById('keyReceivedSection').style.display = 'none';
             document.getElementById('returningPlayerSection').style.display = 'none';
             document.getElementById('emailError').style.display = 'none';
 
-            if (remaining > 0) {
-                document.getElementById('respawnMessage').textContent = `${remaining} free respawns remaining for Level ${level}`;
-            } else {
-                document.getElementById('respawnMessage').textContent = 'No free respawns left. Enter email for continue key.';
-            }
+            document.getElementById('respawnMessage').textContent = 'Enter your email to receive a continue key';
 
             document.getElementById('respawnModal').classList.add('show');
         }
@@ -3957,25 +3994,67 @@
             document.getElementById('respawnModal').classList.remove('show');
         }
 
-        async function doRespawn() {
-            respawnsUsedThisLevel++;
+        async function autoContinueWithKey() {
+            // Use stored continue key to auto-continue
+            continuesUsedThisLevel++;
 
-            // Save progress to server
+            // Check if we've exceeded max continues
+            if (continuesUsedThisLevel >= MAX_CONTINUES_PER_LEVEL) {
+                // Restart at beginning of current level
+                restartAtLevelBeginning();
+                return;
+            }
+
+            // Validate key and continue
             try {
-                await fetch(`${API_BASE}/api/player/save-progress`, {
+                const response = await fetch(`${API_BASE}/api/player/validate-key`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: myPlayerName,
-                        level: level,
-                        score: score,
-                        difficulty: selectedDifficulty.toUpperCase(),
-                        respawnsUsed: respawnsUsedThisLevel
-                    })
+                    body: JSON.stringify({ key: currentContinueKey })
                 });
-            } catch (e) { console.error('Failed to save progress:', e); }
+                const data = await response.json();
+
+                if (data.valid) {
+                    respawnPlayer();
+                } else {
+                    // Key invalid or exhausted - clear it and show modal
+                    clearStoredContinueKey();
+                    continuesUsedThisLevel--; // Undo increment
+                    showRespawnModal();
+                }
+            } catch (e) {
+                // Network error - still respawn but don't consume key
+                continuesUsedThisLevel--;
+                respawnPlayer();
+            }
+        }
+
+        function restartAtLevelBeginning() {
+            // Reset continues for fresh start at this level
+            continuesUsedThisLevel = 0;
+            killsThisLevel = 0;
+            score = savedLevelScore; // Restore score to level start
+            document.getElementById('score').textContent = score;
 
             // Respawn player
+            hideRespawnModal();
+            respawnPlayer();
+
+            // Show notification
+            showNotification(`Restarting Level ${level}`);
+        }
+
+        function showNotification(msg) {
+            // Quick notification overlay
+            const notif = document.createElement('div');
+            notif.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:#ffd700;padding:20px 40px;border-radius:10px;font-size:24px;z-index:9999;';
+            notif.textContent = msg;
+            document.body.appendChild(notif);
+            setTimeout(() => notif.remove(), 2000);
+        }
+
+        async function doRespawn() {
+            // Legacy function - now just calls respawnPlayer
             hideRespawnModal();
             respawnPlayer();
         }
@@ -4043,14 +4122,13 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    currentContinueKey = data.key;
-                    document.getElementById('displayedKey').textContent = data.key;
-                    document.getElementById('respawnKeyInput').value = data.key;
-
-                    // Show key received section
+                    // Key is sent to email only - NOT displayed on screen
+                    // Show key input section so player can enter key from email
                     document.getElementById('emailSection').style.display = 'none';
                     document.getElementById('keyReceivedSection').style.display = 'block';
-                    document.getElementById('respawnMessage').textContent = 'Key sent! You have 3 more respawns.';
+                    document.getElementById('displayedKey').textContent = 'Check your email!';
+                    document.getElementById('respawnKeyInput').value = '';
+                    document.getElementById('respawnMessage').textContent = data.message || 'Key sent to your email! Enter it below.';
                 } else {
                     document.getElementById('emailError').textContent = data.error || 'Failed to send key';
                     document.getElementById('emailError').style.display = 'block';
@@ -4087,9 +4165,9 @@
                 const data = await response.json();
 
                 if (data.valid) {
-                    // Reset respawns for this level
-                    respawnsUsedThisLevel = 0;
-                    playerHasKey = true;
+                    // Store key for future auto-continues
+                    storeCurrentContinueKey(key);
+                    continuesUsedThisLevel++;
 
                     // Respawn
                     hideRespawnModal();
@@ -6083,6 +6161,7 @@
             });
             enemies = [];
             totalEnemiesKilled += killedCount;
+            killsThisLevel += killedCount;
             document.getElementById('score').textContent = score;
 
             // 3x damage to boss (equivalent to 3 regular bullets worth of damage)
@@ -6116,26 +6195,19 @@
         }
 
         function checkLevelUp() {
-            // Determine which boss should spawn based on score thresholds
-            // Boss 1: 1k, Boss 2: 3k, Boss 3: 5k, Boss 4: 7k, Boss 5: 9k, Boss 6: 11k
-            let targetLevel = 0;
-            for (let lvl = 6; lvl >= 1; lvl--) {
-                if (score >= bossThresholds[lvl]) {
-                    targetLevel = lvl;
-                    break;
-                }
-            }
-
-            if (targetLevel >= level && !bossActive) {
+            // Boss spawns after 25 kills in current level
+            if (!bossActive && killsThisLevel >= KILLS_FOR_BOSS) {
                 // Check if boss for current level has been defeated
                 if (!bossDefeated.includes(level)) {
                     // Spawn boss for current level
                     spawnBoss(level);
                 } else if (level < 6) {
-                    // Boss already defeated, advance level
+                    // Boss already defeated, advance to next level
                     level++;
+                    killsThisLevel = 0; // Reset kills for new level
+                    continuesUsedThisLevel = 0; // Reset continues for new level
+                    savedLevelScore = score; // Save score at level start
                     document.getElementById('levelDisplay').textContent = level <= 5 ? 'Level ' + level : 'FINAL LEVEL';
-                    respawnsUsedThisLevel = 0; // Reset respawns for new level
                     playLevelUp();
                     createExplosion(logicalWidth / 2, logicalHeight / 2, '#ffd700', 40);
                 }
@@ -6173,7 +6245,7 @@
             }
             player.x = Math.max(30, Math.min(logicalWidth - 30, player.x));
 
-            if (autoFire) shoot();
+            // Removed: autoFire for continuous shooting - now tap-only
 
             // Laser damage (blocked by walls)
             if (laserActive && currentWeapon === 'laser') {
@@ -6183,6 +6255,7 @@
                     if (enemy.x > player.x - 15 && enemy.x < player.x + 15 && enemy.y < player.y && enemy.y > laserEndY) {
                         score += 100;
                         totalEnemiesKilled++;
+                        killsThisLevel++;
                         document.getElementById('score').textContent = score;
                         createExplosion(enemy.x, enemy.y, '#ff00ff');
                         playExplosion();
@@ -6318,7 +6391,7 @@
                                 playBigExplosion();
                                 enemies = enemies.filter(e => {
                                     const dist = Math.hypot(e.x - bullet.x, e.y - bullet.y);
-                                    if (dist < 100) { score += 100; totalEnemiesKilled++; createExplosion(e.x, e.y, '#e74c3c'); return false; }
+                                    if (dist < 100) { score += 100; totalEnemiesKilled++; killsThisLevel++; createExplosion(e.x, e.y, '#e74c3c'); return false; }
                                     return true;
                                 });
                                 bullets.splice(bi, 1);
@@ -6327,6 +6400,7 @@
                                 enemies.splice(ei, 1);
                                 score += 100;
                                 totalEnemiesKilled++;
+                                killsThisLevel++;
                                 createExplosion(enemy.x, enemy.y, '#e74c3c');
                                 playExplosion();
                             }
@@ -6343,7 +6417,7 @@
                             playBigExplosion();
                             enemies = enemies.filter(e => {
                                 const dist = Math.hypot(e.x - bomb.x, e.y - bomb.y);
-                                if (dist < 120) { score += 100; totalEnemiesKilled++; createExplosion(e.x, e.y, '#ff6600'); return false; }
+                                if (dist < 120) { score += 100; totalEnemiesKilled++; killsThisLevel++; createExplosion(e.x, e.y, '#ff6600'); return false; }
                                 return true;
                             });
                             document.getElementById('score').textContent = score;
@@ -6727,7 +6801,12 @@
             level = 1;
             lives = diff.lives;
             totalEnemiesKilled = 0;
-            respawnsUsedThisLevel = 0; // Reset respawns for new game
+            killsThisLevel = 0;
+            continuesUsedThisLevel = 0;
+            respawnsUsedThisLevel = 0;
+            savedLevelScore = 0;
+            // Load any stored continue key
+            loadStoredContinueKey();
             bullets = []; enemies = []; particles = []; powerups = [];
             bombs = []; walls = []; weaponPickups = []; mines = [];
             player.x = logicalWidth / 2; player.y = logicalHeight - 80;
@@ -6970,8 +7049,9 @@
 
         // === CONTROLS ===
         document.addEventListener('keydown', (e) => {
+            // Prevent key repeat for shooting - only fire on initial press
+            if (e.code === 'Space' && !e.repeat && gameRunning && !gamePaused) { shoot(); e.preventDefault(); }
             keys[e.code] = true;
-            if (e.code === 'Space' && gameRunning && !gamePaused) { shoot(); e.preventDefault(); }
             if (e.code === 'KeyQ' && gameRunning && !gamePaused) { switchWeapon(); e.preventDefault(); }
             if (e.code === 'KeyP' && gameRunning) { togglePause(); e.preventDefault(); }
             if (e.code === 'Escape' && gameRunning) {
@@ -7008,8 +7088,9 @@
         joystickArea.addEventListener('touchmove', handleJoystickMove);
         joystickArea.addEventListener('touchend', (e) => { e.preventDefault(); joystickActive = false; touchMove.x = 0; touchMove.y = 0; joystickKnob.style.transform = 'translate(-50%, -50%)'; });
 
-        fireButton.addEventListener('touchstart', (e) => { e.preventDefault(); autoFire = true; if (gameRunning) shoot(); });
-        fireButton.addEventListener('touchend', (e) => { e.preventDefault(); autoFire = false; laserActive = false; });
+        // Tap-to-fire only - no hold-to-fire (autoFire disabled)
+        fireButton.addEventListener('touchstart', (e) => { e.preventDefault(); if (gameRunning) shoot(); });
+        fireButton.addEventListener('touchend', (e) => { e.preventDefault(); laserActive = false; });
 
         switchBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (gameRunning) switchWeapon(); });
 
