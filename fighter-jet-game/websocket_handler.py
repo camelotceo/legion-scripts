@@ -379,3 +379,50 @@ def register_handlers():
             'difficulty': data.get('difficulty'),
             'timestamp': datetime.now().isoformat()
         }, to=room_code)
+
+    # === PVP (True 1v1) Handlers ===
+
+    @socketio.on('pvp_hit')
+    def handle_pvp_hit(data):
+        """Player hit opponent with bullet in PvP mode."""
+        room_code = data.get('roomCode')
+
+        if not room_code:
+            return
+
+        # Broadcast hit to opponent in the room
+        emit('pvp_hit', {
+            'shooterId': data.get('shooterId'),
+            'damage': data.get('damage', 10),
+            'timestamp': datetime.now().isoformat()
+        }, to=room_code, include_self=False)
+
+    @socketio.on('pvp_health_update')
+    def handle_pvp_health_update(data):
+        """Player health changed in PvP mode."""
+        room_code = data.get('roomCode')
+
+        if not room_code:
+            return
+
+        # Broadcast health update to opponent
+        emit('pvp_health_update', {
+            'playerId': data.get('playerId'),
+            'health': data.get('health'),
+            'timestamp': datetime.now().isoformat()
+        }, to=room_code, include_self=False)
+
+    @socketio.on('pvp_round_end')
+    def handle_pvp_round_end(data):
+        """Round ended in PvP mode (player died)."""
+        room_code = data.get('roomCode')
+
+        if not room_code:
+            return
+
+        # Broadcast round end to opponent
+        emit('round_ended', {
+            'loser': data.get('loser'),
+            'roundNumber': data.get('roundNumber'),
+            'timestamp': datetime.now().isoformat()
+        }, to=room_code, include_self=False)

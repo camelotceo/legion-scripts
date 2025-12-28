@@ -657,37 +657,42 @@
                 </div>
             </div>
         </div>
-        <!-- Versus Mode HUD -->
+        <!-- Versus Mode HUD (True PvP) -->
         <div id="versusHud" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; pointer-events:none;">
-            <!-- Top bar: P1 vs P2 -->
-            <div style="position:absolute; top:10px; left:10px; right:10px; display:flex; justify-content:space-between; align-items:center; color:#fff; font-size:14px; text-shadow:2px 2px 4px rgba(0,0,0,0.5);">
-                <div style="background:rgba(59,130,246,0.4); padding:10px 15px; border-radius:10px; border:2px solid #3b82f6;">
-                    <div style="font-weight:bold; color:#3b82f6;">YOU</div>
-                    <div>Lives: <span id="versusP1Lives">3</span></div>
-                    <div style="font-size:12px;">Score: <span id="versusP1Score">0</span></div>
+            <!-- Top bar: Health Bars -->
+            <div style="position:absolute; top:10px; left:10px; right:10px; display:flex; justify-content:space-between; align-items:flex-start; gap:20px;">
+                <!-- My Health -->
+                <div style="flex:1; max-width:300px;">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+                        <span style="color:#3b82f6; font-weight:bold; font-size:14px; text-shadow:2px 2px 4px rgba(0,0,0,0.8);">YOU</span>
+                        <span id="versusP1HealthText" style="color:#fff; font-size:12px; text-shadow:2px 2px 4px rgba(0,0,0,0.8);">100</span>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.6); border:2px solid #3b82f6; border-radius:10px; height:20px; overflow:hidden;">
+                        <div id="versusP1HealthBar" style="background:linear-gradient(90deg, #3b82f6, #60a5fa); height:100%; width:100%; transition:width 0.3s ease;"></div>
+                    </div>
                 </div>
-                <div style="text-align:center;">
-                    <div id="versusRoundInfo" style="font-size:16px; font-weight:bold; color:#ffd700;">Round 1 | 0-0</div>
-                    <div style="font-size:24px; margin:5px 0;">⚔️</div>
+                <!-- Round Info -->
+                <div style="text-align:center; min-width:120px;">
+                    <div id="versusRoundInfo" style="font-size:18px; font-weight:bold; color:#ffd700; text-shadow:2px 2px 4px rgba(0,0,0,0.8);">Round 1</div>
+                    <div style="display:flex; justify-content:center; gap:10px; margin-top:5px;">
+                        <span id="versusP1Wins" style="font-size:20px;">○○</span>
+                        <span style="font-size:16px; color:#ffd700;">VS</span>
+                        <span id="versusP2Wins" style="font-size:20px;">○○</span>
+                    </div>
                 </div>
-                <div style="background:rgba(239,68,68,0.4); padding:10px 15px; border-radius:10px; border:2px solid #ef4444; text-align:right;">
-                    <div style="font-weight:bold; color:#ef4444;"><span id="versusP2Name">Opponent</span></div>
-                    <div>Lives: <span id="versusP2Lives">3</span></div>
-                    <div style="font-size:12px;">Score: <span id="versusP2Score">0</span></div>
+                <!-- Opponent Health -->
+                <div style="flex:1; max-width:300px; text-align:right;">
+                    <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-bottom:5px;">
+                        <span id="versusP2HealthText" style="color:#fff; font-size:12px; text-shadow:2px 2px 4px rgba(0,0,0,0.8);">100</span>
+                        <span id="versusP2Name" style="color:#ef4444; font-weight:bold; font-size:14px; text-shadow:2px 2px 4px rgba(0,0,0,0.8);">Opponent</span>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.6); border:2px solid #ef4444; border-radius:10px; height:20px; overflow:hidden;">
+                        <div id="versusP2HealthBar" style="background:linear-gradient(90deg, #f87171, #ef4444); height:100%; width:100%; transition:width 0.3s ease;"></div>
+                    </div>
                 </div>
             </div>
-            <!-- Bottom bar: Hazards -->
-            <div style="position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:8px; align-items:center; pointer-events:auto;">
-                <div style="background:rgba(168,85,247,0.4); padding:8px 12px; border-radius:8px; border:2px solid #a855f7; color:#fff;">
-                    <span style="font-size:12px;">⚡ Hazard Points:</span>
-                    <span id="versusHazardPoints" style="font-weight:bold; font-size:16px;">0</span>
-                </div>
-                <button id="hazard_drones" onclick="sendHazard('drones')" style="background:#1e1e2e; border:2px solid #a855f7; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; font-size:12px;" title="Spawn 3 drones (5 HP)">🛸 5</button>
-                <button id="hazard_speedup" onclick="sendHazard('speedup')" style="background:#1e1e2e; border:2px solid #a855f7; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; font-size:12px;" title="Speed up enemies (4 HP)">⚡ 4</button>
-                <button id="hazard_wall" onclick="sendHazard('wall')" style="background:#1e1e2e; border:2px solid #a855f7; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; font-size:12px;" title="Spawn wall (6 HP)">🧱 6</button>
-                <button id="hazard_bomb" onclick="sendHazard('bomb')" style="background:#1e1e2e; border:2px solid #a855f7; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; font-size:12px;" title="Drop bomb (8 HP)">💣 8</button>
-                <button id="hazard_mines" onclick="sendHazard('mines')" style="background:#1e1e2e; border:2px solid #a855f7; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; font-size:12px;" title="Mine field (10 HP)">💥 10</button>
-            </div>
+            <!-- PvP Round Countdown Overlay -->
+            <div id="pvpCountdown" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:80px; font-weight:bold; color:#ffd700; text-shadow:0 0 30px #ffd700, 0 0 60px #ff8c00; z-index:100;"></div>
         </div>
         <div id="bossHealthContainer">
             <span id="bossName">BOSS NAME</span>
@@ -3622,6 +3627,25 @@
                     }
                 });
 
+                // PvP event handlers
+                mpSocket.on('pvp_hit', (data) => {
+                    handlePvPHit(data);
+                });
+
+                mpSocket.on('pvp_health_update', (data) => {
+                    handleOpponentHealthUpdate(data);
+                });
+
+                mpSocket.on('round_ended', (data) => {
+                    // Handle round end notification from opponent
+                    if (data.loser && data.loser !== myPlayerId) {
+                        // Opponent lost, we won this round
+                        if (!versusState.matchOver) {
+                            handleVersusRoundWin();
+                        }
+                    }
+                });
+
             } catch (err) {
                 console.error('WebSocket connection error:', err);
             }
@@ -3895,6 +3919,22 @@
             if (selectedGameMode === 'coop' || selectedGameMode === 'versus') {
                 startPositionSync();
             }
+
+            // For versus mode, show countdown before first round
+            if (selectedGameMode === 'versus') {
+                versusState.roundActive = false;
+                versusState.roundStartCountdown = true;
+                // Position players on opposite sides
+                player.x = logicalWidth * 0.25;
+                player.y = logicalHeight / 2;
+                otherPlayer.x = logicalWidth * 0.75;
+                otherPlayer.y = logicalHeight / 2;
+                otherPlayer.isActive = true;
+                updateVersusHud();
+                startPvPRoundCountdown(() => {
+                    versusState.roundActive = true;
+                });
+            }
         }
 
         // Flag for multiplayer mode
@@ -4029,68 +4069,64 @@
             }
         }
 
-        // === VERSUS MODE STATE ===
-        const VERSUS_LIVES = 3;
-        const VERSUS_ROUNDS_TO_WIN = 2;  // Best of 3
-
-        // Hazard definitions
-        const HAZARDS = {
-            drones: { name: 'Drone Swarm', cost: 5, icon: '🛸', description: 'Spawn 3 drones on opponent' },
-            bomb: { name: 'Bomb Drop', cost: 8, icon: '💣', description: 'Drop bomb near opponent' },
-            wall: { name: 'Laser Wall', cost: 6, icon: '🧱', description: 'Create wall in opponent path' },
-            speedup: { name: 'Speed Boost', cost: 4, icon: '⚡', description: 'Speed up all enemies' },
-            mines: { name: 'Mine Field', cost: 10, icon: '💥', description: 'Spawn 5 mines on opponent' }
-        };
+        // === VERSUS MODE STATE (True PvP) ===
+        const PVP_MAX_HEALTH = 100;
+        const PVP_BULLET_DAMAGE = 10;
+        const PVP_INVULN_TIME = 500;      // 500ms invulnerability after hit
+        const VERSUS_ROUNDS_TO_WIN = 2;   // Best of 3
 
         let versusState = {
-            myLives: VERSUS_LIVES,
+            myHealth: PVP_MAX_HEALTH,
             myScore: 0,
-            myHazardPoints: 0,
-            opponentLives: VERSUS_LIVES,
+            opponentHealth: PVP_MAX_HEALTH,
             opponentScore: 0,
             myRoundWins: 0,
             opponentRoundWins: 0,
             currentRound: 1,
             roundActive: true,
             matchOver: false,
-            killStreak: 0,           // For hazard point bonuses
-            survivalTimer: 0,        // For survival bonus
-            lastSurvivalBonus: 0
+            myInvulnerable: false,        // Invulnerability after hit
+            opponentInvulnerable: false,
+            roundStartCountdown: false    // For round start countdown
         };
 
         function resetVersusState() {
             versusState = {
-                myLives: VERSUS_LIVES,
+                myHealth: PVP_MAX_HEALTH,
                 myScore: 0,
-                myHazardPoints: 0,
-                opponentLives: VERSUS_LIVES,
+                opponentHealth: PVP_MAX_HEALTH,
                 opponentScore: 0,
                 myRoundWins: 0,
                 opponentRoundWins: 0,
                 currentRound: 1,
                 roundActive: true,
                 matchOver: false,
-                killStreak: 0,
-                survivalTimer: Date.now(),
-                lastSurvivalBonus: Date.now()
+                myInvulnerable: false,
+                opponentInvulnerable: false,
+                roundStartCountdown: false
             };
-            // Reset kill streak tracking
-            lastEnemyKillCount = 0;
         }
 
         function resetVersusRound() {
-            versusState.myLives = VERSUS_LIVES;
-            versusState.opponentLives = VERSUS_LIVES;
+            versusState.myHealth = PVP_MAX_HEALTH;
+            versusState.opponentHealth = PVP_MAX_HEALTH;
             versusState.roundActive = true;
-            versusState.killStreak = 0;
-            versusState.survivalTimer = Date.now();
-            versusState.lastSurvivalBonus = Date.now();
-            lives = VERSUS_LIVES;
-            player.x = logicalWidth / 2;
-            player.y = logicalHeight - 80;
-            otherPlayer.x = logicalWidth / 2;
-            otherPlayer.y = logicalHeight - 80;
-            otherPlayer.lives = VERSUS_LIVES;
+            versusState.myInvulnerable = false;
+            versusState.opponentInvulnerable = false;
+            versusState.roundStartCountdown = true;
+
+            // Position players on opposite sides facing each other
+            player.x = logicalWidth * 0.25;
+            player.y = logicalHeight / 2;
+            otherPlayer.x = logicalWidth * 0.75;
+            otherPlayer.y = logicalHeight / 2;
+            otherPlayer.isActive = true;
+
+            // Clear bullets and enemies for fresh round
+            bullets.length = 0;
+            enemies.length = 0;
+
+            updateVersusHud();
         }
 
         // Award hazard points for various actions
@@ -4155,23 +4191,147 @@
         function updateVersusHud() {
             if (!isMultiplayer || selectedGameMode !== 'versus') return;
 
-            document.getElementById('versusP1Lives').textContent = versusState.myLives;
-            document.getElementById('versusP1Score').textContent = versusState.myScore;
-            document.getElementById('versusP2Lives').textContent = versusState.opponentLives;
-            document.getElementById('versusP2Score').textContent = versusState.opponentScore;
-            document.getElementById('versusP2Name').textContent = otherPlayer.name;
-            document.getElementById('versusRoundInfo').textContent =
-                `Round ${versusState.currentRound} | ${versusState.myRoundWins}-${versusState.opponentRoundWins}`;
-            document.getElementById('versusHazardPoints').textContent = versusState.myHazardPoints;
+            // Update health bars
+            const myHealthPercent = (versusState.myHealth / PVP_MAX_HEALTH) * 100;
+            const opponentHealthPercent = (versusState.opponentHealth / PVP_MAX_HEALTH) * 100;
 
-            // Update hazard buttons
-            Object.keys(HAZARDS).forEach(key => {
-                const btn = document.getElementById('hazard_' + key);
-                if (btn) {
-                    btn.disabled = versusState.myHazardPoints < HAZARDS[key].cost;
-                    btn.style.opacity = btn.disabled ? '0.5' : '1';
+            document.getElementById('versusP1HealthBar').style.width = myHealthPercent + '%';
+            document.getElementById('versusP1HealthText').textContent = Math.max(0, versusState.myHealth);
+            document.getElementById('versusP2HealthBar').style.width = opponentHealthPercent + '%';
+            document.getElementById('versusP2HealthText').textContent = Math.max(0, versusState.opponentHealth);
+            document.getElementById('versusP2Name').textContent = otherPlayer.name || 'Opponent';
+
+            // Update round info
+            document.getElementById('versusRoundInfo').textContent = `Round ${versusState.currentRound}`;
+
+            // Update win indicators (filled circle = win, empty = no win yet)
+            const p1WinsStr = '●'.repeat(versusState.myRoundWins) + '○'.repeat(VERSUS_ROUNDS_TO_WIN - versusState.myRoundWins);
+            const p2WinsStr = '●'.repeat(versusState.opponentRoundWins) + '○'.repeat(VERSUS_ROUNDS_TO_WIN - versusState.opponentRoundWins);
+            document.getElementById('versusP1Wins').textContent = p1WinsStr;
+            document.getElementById('versusP2Wins').textContent = p2WinsStr;
+
+            // Color health bars based on health level
+            const p1Bar = document.getElementById('versusP1HealthBar');
+            const p2Bar = document.getElementById('versusP2HealthBar');
+            if (myHealthPercent <= 25) {
+                p1Bar.style.background = 'linear-gradient(90deg, #ef4444, #dc2626)';
+            } else if (myHealthPercent <= 50) {
+                p1Bar.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
+            } else {
+                p1Bar.style.background = 'linear-gradient(90deg, #3b82f6, #60a5fa)';
+            }
+            if (opponentHealthPercent <= 25) {
+                p2Bar.style.background = 'linear-gradient(90deg, #dc2626, #ef4444)';
+            } else if (opponentHealthPercent <= 50) {
+                p2Bar.style.background = 'linear-gradient(90deg, #d97706, #f59e0b)';
+            } else {
+                p2Bar.style.background = 'linear-gradient(90deg, #f87171, #ef4444)';
+            }
+        }
+
+        // === PVP DAMAGE SYSTEM ===
+
+        // Take PvP damage
+        function takePvPDamage(damage) {
+            if (!isMultiplayer || selectedGameMode !== 'versus') return;
+            if (versusState.myInvulnerable || !versusState.roundActive) return;
+
+            versusState.myHealth -= damage;
+            versusState.myInvulnerable = true;
+
+            // Flash effect
+            playerHitFlash = 300;
+            playOuchSound();
+            createExplosion(player.x, player.y, '#ff6666');
+
+            // Update HUD
+            updateVersusHud();
+
+            // Broadcast health update to opponent
+            if (mpSocket && currentRoomCode) {
+                mpSocket.emit('pvp_health_update', {
+                    roomCode: currentRoomCode,
+                    playerId: myPlayerId,
+                    health: versusState.myHealth
+                });
+            }
+
+            // End invulnerability after timer
+            setTimeout(() => {
+                versusState.myInvulnerable = false;
+            }, PVP_INVULN_TIME);
+
+            // Check for round loss
+            if (versusState.myHealth <= 0) {
+                versusState.myHealth = 0;
+                updateVersusHud();
+                handleVersusRoundLoss();
+            }
+        }
+
+        // Deal PvP damage to opponent (when our bullet hits them)
+        function dealPvPDamage(damage) {
+            if (!isMultiplayer || selectedGameMode !== 'versus') return;
+            if (versusState.opponentInvulnerable || !versusState.roundActive) return;
+
+            // Broadcast hit to opponent
+            if (mpSocket && currentRoomCode) {
+                mpSocket.emit('pvp_hit', {
+                    roomCode: currentRoomCode,
+                    shooterId: myPlayerId,
+                    damage: damage
+                });
+            }
+
+            // Visual feedback - we hit them
+            versusState.myScore += 50;
+            showFloatingText('+HIT!', player.x, player.y - 60, '#4ade80');
+        }
+
+        // Handle incoming damage from opponent's bullet
+        function handlePvPHit(data) {
+            if (data.shooterId === myPlayerId) return;  // Ignore our own shots
+            takePvPDamage(data.damage);
+        }
+
+        // Handle opponent health update
+        function handleOpponentHealthUpdate(data) {
+            if (data.playerId === myPlayerId) return;  // Ignore our own updates
+            versusState.opponentHealth = data.health;
+            versusState.opponentInvulnerable = true;
+            setTimeout(() => {
+                versusState.opponentInvulnerable = false;
+            }, PVP_INVULN_TIME);
+            updateVersusHud();
+
+            // Check if opponent died
+            if (versusState.opponentHealth <= 0) {
+                handleVersusRoundWin();
+            }
+        }
+
+        // PvP round countdown
+        function startPvPRoundCountdown(callback) {
+            const countdownEl = document.getElementById('pvpCountdown');
+            countdownEl.style.display = 'block';
+            versusState.roundStartCountdown = true;
+
+            let count = 3;
+            countdownEl.textContent = count;
+
+            const countInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownEl.textContent = count;
+                } else if (count === 0) {
+                    countdownEl.textContent = 'FIGHT!';
+                } else {
+                    clearInterval(countInterval);
+                    countdownEl.style.display = 'none';
+                    versusState.roundStartCountdown = false;
+                    if (callback) callback();
                 }
-            });
+            }, 1000);
         }
 
         // Send hazard to opponent
@@ -4282,6 +4442,10 @@
                     versusState.currentRound++;
                     resetVersusRound();
                     updateVersusHud();
+                    // Start countdown for next round
+                    startPvPRoundCountdown(() => {
+                        versusState.roundActive = true;
+                    });
                 });
             }
         }
@@ -4300,6 +4464,10 @@
                     versusState.currentRound++;
                     resetVersusRound();
                     updateVersusHud();
+                    // Start countdown for next round
+                    startPvPRoundCountdown(() => {
+                        versusState.roundActive = true;
+                    });
                 });
             }
         }
@@ -4385,28 +4553,8 @@
         function handleVersusGameUpdate(data) {
             switch (data.type) {
                 case 'hit':
-                    // We were hit by opponent
-                    if (data.targetId === myPlayerId) {
-                        versusState.myLives--;
-                        lives = versusState.myLives;
-                        versusState.opponentScore += 200;
-                        updateVersusHud();
-                        createExplosion(player.x, player.y, jetColors[selectedColor].body);
-                        playExplosion();
-
-                        if (versusState.myLives <= 0) {
-                            handleVersusRoundLoss();
-                        }
-                    } else {
-                        // Opponent was hit
-                        versusState.opponentLives--;
-                        otherPlayer.lives = versusState.opponentLives;
-                        updateVersusHud();
-
-                        if (versusState.opponentLives <= 0) {
-                            handleVersusRoundWin();
-                        }
-                    }
+                    // Legacy hit handler - now using health-based PvP system
+                    // Hits are now handled via pvp_hit and takePvPDamage
                     break;
                 case 'round_end':
                     // Round end sync - only process if we haven't already handled it locally
@@ -8559,14 +8707,8 @@
                             if (shieldHits <= 0) deactivateShield();
                         } else if (!isInvincible && canTakeDamage()) {
                             if (isMultiplayer && selectedGameMode === 'versus') {
-                                versusState.myLives--;
-                                lives = versusState.myLives;
-                                updateVersusHud();
-                                createExplosion(player.x, player.y, jetColors[selectedColor].body);
-                                playExplosion();
-                                if (versusState.myLives <= 0) {
-                                    handleVersusRoundLoss();
-                                }
+                                // PvP mode - take damage from enemy bullets
+                                takePvPDamage(PVP_BULLET_DAMAGE);
                             } else {
                                 lives--;
                                 playerHitFlash = 200; // Flash for 200ms
@@ -8652,14 +8794,8 @@
                             if (shieldHits <= 0) deactivateShield();
                         } else if (!isInvincible && canTakeDamage()) {
                             if (isMultiplayer && selectedGameMode === 'versus') {
-                                versusState.myLives--;
-                                lives = versusState.myLives;
-                                updateVersusHud();
-                                createExplosion(player.x, player.y, jetColors[selectedColor].body);
-                                playExplosion();
-                                if (versusState.myLives <= 0) {
-                                    handleVersusRoundLoss();
-                                }
+                                // PvP mode - take damage from enemy collision
+                                takePvPDamage(PVP_BULLET_DAMAGE);
                             } else {
                                 lives--;
                                 playerHitFlash = 200; // Flash for 200ms
@@ -8677,11 +8813,12 @@
                 });
             }
 
-            // === PVP COLLISIONS (Versus Mode) ===
-            if (isMultiplayer && selectedGameMode === 'versus' && versusState.roundActive) {
-                // Check if our bullets hit opponent
-                bullets.forEach((bullet, bi) => {
-                    if (bullet.isEnemy || bullet.fromPartner) return;  // Only our bullets
+            // === PVP COLLISIONS (True PvP - Health Based) ===
+            if (isMultiplayer && selectedGameMode === 'versus' && versusState.roundActive && !versusState.roundStartCountdown) {
+                // Check if our bullets hit opponent (deal damage to them)
+                for (let bi = bullets.length - 1; bi >= 0; bi--) {
+                    const bullet = bullets[bi];
+                    if (bullet.isEnemy || bullet.fromPartner) continue;  // Only our bullets
 
                     // Create hitbox for opponent
                     const opponentHitbox = {
@@ -8691,51 +8828,34 @@
                         height: 50
                     };
 
-                    if (checkCollision(bullet, opponentHitbox) && otherPlayer.isActive) {
+                    if (checkCollision(bullet, opponentHitbox) && otherPlayer.isActive && !versusState.opponentInvulnerable) {
                         bullets.splice(bi, 1);
-                        createExplosion(otherPlayer.x, otherPlayer.y, jetColors[otherPlayer.color].body);
+                        createExplosion(otherPlayer.x, otherPlayer.y, jetColors[otherPlayer.color || 'blue'].body);
                         playExplosion();
 
-                        // Award hazard points for hitting opponent
-                        awardHazardPoints('hit_opponent', 3);
-                        versusState.myScore += 200;
-
-                        // Broadcast hit to opponent
-                        if (mpSocket && currentRoomCode) {
-                            mpSocket.emit('player_hit', {
-                                roomCode: currentRoomCode,
-                                targetId: otherPlayer.id,
-                                shooterId: myPlayerId,
-                                damage: 1
-                            });
-                        }
+                        // Deal PvP damage to opponent
+                        dealPvPDamage(PVP_BULLET_DAMAGE);
                     }
-                });
+                }
 
-                // Check if partner's bullets hit us
-                bullets.forEach((bullet, bi) => {
-                    if (!bullet.fromPartner) return;  // Only partner's bullets
+                // Check if opponent's bullets hit us (we take damage)
+                for (let bi = bullets.length - 1; bi >= 0; bi--) {
+                    const bullet = bullets[bi];
+                    if (!bullet.fromPartner) continue;  // Only opponent's bullets
 
-                    if (checkCollision(bullet, player) && !ghostActive) {
+                    if (checkCollision(bullet, player) && !ghostActive && !versusState.myInvulnerable) {
                         bullets.splice(bi, 1);
 
                         if (shieldActive) {
                             shieldHits--;
                             createExplosion(player.x, player.y, '#00ffff');
                             if (shieldHits <= 0) deactivateShield();
-                        } else if (!isInvincible && canTakeDamage()) {
-                            versusState.myLives--;
-                            lives = versusState.myLives;
-                            createExplosion(player.x, player.y, jetColors[selectedColor].body);
-                            playExplosion();
-                            updateVersusHud();
-
-                            if (versusState.myLives <= 0) {
-                                handleVersusRoundLoss();
-                            }
+                        } else if (!isInvincible) {
+                            // Take PvP damage
+                            takePvPDamage(PVP_BULLET_DAMAGE);
                         }
                     }
-                });
+                }
             }
 
             // Player-wall collision (ghost mode: pass through walls)
@@ -8747,14 +8867,8 @@
                             if (shieldHits <= 0) deactivateShield();
                         } else if (!isInvincible && canTakeDamage()) {
                             if (isMultiplayer && selectedGameMode === 'versus') {
-                                versusState.myLives--;
-                                lives = versusState.myLives;
-                                updateVersusHud();
-                                createExplosion(player.x, player.y, jetColors[selectedColor].body);
-                                playExplosion();
-                                if (versusState.myLives <= 0) {
-                                    handleVersusRoundLoss();
-                                }
+                                // PvP wall collision - take damage
+                                takePvPDamage(PVP_BULLET_DAMAGE);
                             } else {
                                 lives--;
                                 playerHitFlash = 200; // Flash for 200ms
@@ -8864,13 +8978,8 @@
                             if (shieldHits <= 0) deactivateShield();
                         } else if (!isInvincible && canTakeDamage()) {
                             if (isMultiplayer && selectedGameMode === 'versus') {
-                                versusState.myLives--;
-                                lives = versusState.myLives;
-                                updateVersusHud();
-                                createExplosion(player.x, player.y, jetColors[selectedColor].body);
-                                if (versusState.myLives <= 0) {
-                                    handleVersusRoundLoss();
-                                }
+                                // PvP mode - take damage from mine
+                                takePvPDamage(PVP_BULLET_DAMAGE * 2);  // Mines do 20 damage
                             } else {
                                 lives--;
                                 playerHitFlash = 200; // Flash for 200ms
