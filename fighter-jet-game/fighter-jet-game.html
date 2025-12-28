@@ -3150,18 +3150,69 @@
             setTimeout(() => { errorEl.style.display = 'none'; }, 3000);
         }
 
+        // Helper to ensure player is registered before multiplayer
+        async function ensurePlayerRegistered(playerName) {
+            // If already logged in with this name, we're good
+            if (myPlayerId && myPlayerName === playerName) {
+                return true;
+            }
+
+            // Clear old session if name changed
+            if (playerName !== localStorage.getItem('playerName')) {
+                sessionToken = null;
+                localStorage.removeItem('sessionToken');
+                myPlayerId = null;
+                myPlayerName = '';
+            }
+
+            // Try to register with this name
+            try {
+                const regResponse = await authFetch(`${API_BASE}/api/auth/register`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        username: playerName,
+                        displayName: playerName
+                    })
+                });
+
+                if (regResponse.ok) {
+                    const data = await regResponse.json();
+                    if (data.success) {
+                        sessionToken = data.token;
+                        localStorage.setItem('sessionToken', sessionToken);
+                        myPlayerId = data.playerId;
+                        myPlayerName = data.username;
+                        savePlayerName(data.username);
+                        return true;
+                    }
+                } else if (regResponse.status === 409) {
+                    // Username taken
+                    showUsernameTakenModal(playerName);
+                    return false;
+                }
+            } catch (e) {
+                console.error('Registration error:', e);
+            }
+            return false;
+        }
+
         // Room Functions
         async function createRoom() {
             const playerName = document.getElementById('mpPlayerNameInput').value.trim() || 'Player';
-            const usedPlayerId = myPlayerId || 'temp_' + Date.now();
+
+            // Ensure player is registered first
+            const registered = await ensurePlayerRegistered(playerName);
+            if (!registered) {
+                return; // Modal shown, user must login or pick new name
+            }
 
             try {
                 const response = await fetch(`${API_BASE}/api/rooms/create`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        playerId: usedPlayerId,
-                        playerName: playerName,
+                        playerId: myPlayerId,
+                        playerName: myPlayerName,
                         mode: selectedGameMode,
                         difficulty: selectedDifficulty.toUpperCase()
                     })
@@ -3169,8 +3220,6 @@
 
                 const data = await response.json();
                 if (data.success) {
-                    myPlayerId = usedPlayerId; // Ensure myPlayerId is set
-                    myPlayerName = playerName; // Ensure myPlayerName is set
                     currentRoomCode = data.roomCode;
                     isRoomHost = true;
                     isPlayerReady = false;
@@ -3194,22 +3243,25 @@
             }
 
             const playerName = document.getElementById('mpPlayerNameInput').value.trim() || 'Player';
-            const usedPlayerId = myPlayerId || 'temp_' + Date.now();
+
+            // Ensure player is registered first
+            const registered = await ensurePlayerRegistered(playerName);
+            if (!registered) {
+                return; // Modal shown, user must login or pick new name
+            }
 
             try {
                 const response = await fetch(`${API_BASE}/api/rooms/join/${code}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        playerId: usedPlayerId,
-                        playerName: playerName
+                        playerId: myPlayerId,
+                        playerName: myPlayerName
                     })
                 });
 
                 const data = await response.json();
                 if (data.success) {
-                    myPlayerId = usedPlayerId; // Ensure myPlayerId is set
-                    myPlayerName = playerName; // Ensure myPlayerName is set
                     currentRoomCode = code;
                     isRoomHost = false;
                     isPlayerReady = false;
@@ -3414,7 +3466,12 @@
         // Matchmaking
         async function quickMatch() {
             const playerName = document.getElementById('mpPlayerNameInput').value.trim() || 'Player';
-            const usedPlayerId = myPlayerId || 'temp_' + Date.now();
+
+            // Ensure player is registered first
+            const registered = await ensurePlayerRegistered(playerName);
+            if (!registered) {
+                return; // Modal shown, user must login or pick new name
+            }
 
             document.getElementById('roomOptions').style.display = 'none';
             document.getElementById('matchmakingQueue').style.display = 'block';
@@ -3425,8 +3482,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        playerId: usedPlayerId,
-                        playerName: playerName,
+                        playerId: myPlayerId,
+                        playerName: myPlayerName,
                         mode: selectedGameMode,
                         difficulty: selectedDifficulty.toUpperCase()
                     })
@@ -3436,8 +3493,6 @@
 
                 if (data.matched) {
                     // Found a match immediately
-                    myPlayerId = usedPlayerId; // Ensure myPlayerId is set
-                    myPlayerName = playerName; // Ensure myPlayerName is set
                     currentRoomCode = data.room_code;
                     isRoomHost = false;
                     isPlayerReady = false;
@@ -3447,8 +3502,6 @@
                     startRoomPolling();
                     connectWebSocket();
                 } else {
-                    myPlayerId = usedPlayerId; // Ensure myPlayerId is set for queue polling
-                    myPlayerName = playerName; // Ensure myPlayerName is set
                     // In queue, start polling
                     document.getElementById('queuePosition').textContent = `Position in queue: ${data.queue_position || 1}`;
                     startMatchmakingPolling();
