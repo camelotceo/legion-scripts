@@ -4857,24 +4857,83 @@
 
         // Handle registration cancel (user chose not to create account)
         function handleRegisterCancel() {
-            // Reset free continues and restart game from Level 1
+            // Reset free continues
             freeUsedContinues = 0;
 
-            // Reset game state to level 1
-            level = 1;
+            // Full game state reset (like startGame but without going to start screen)
+            const diff = getDiffSettings();
             score = 0;
-            savedLevelScore = 0;
-            continuesUsedThisLevel = 0;
+            level = 1;
+            lives = diff.lives;
+            totalEnemiesKilled = 0;
+            playerHitFlash = 0;
+            playerBombs = 3;
+            lastPlayerBombTime = 0;
             killsThisLevel = 0;
+            continuesUsedThisLevel = 0;
+            respawnsUsedThisLevel = 0;
+            savedLevelScore = 0;
+
+            // Clear all game objects
+            bullets = []; enemies = []; particles = []; powerups = [];
+            bombs = []; walls = []; weaponPickups = []; mines = []; electricFences = [];
+            horizonBeams = []; magneticMines = []; mirrorDrones = [];
+
+            // Reset player position
+            player.x = logicalWidth / 2;
+            player.y = logicalHeight - 80;
+
+            // Reset spawn accumulators
+            spawnAccumulator = 0; powerupAccumulator = 0; bombAccumulator = 0;
+            wallAccumulator = 0; weaponAccumulator = 0; spaceObjAccumulator = 0; mineAccumulator = 0;
+
+            // Reset weapons to default
+            currentWeapon = 'pistol';
+            unlockedWeapons = ['pistol'];
+            laserActive = false;
+            laserAmmoTimer = 0;
+            weaponAmmo = {
+                pistol: Infinity,
+                machinegun: 0,
+                bazooka: 0,
+                laser: 0,
+                flak: 0,
+                disc: 0,
+                swarm: 0
+            };
+
+            // Reset powerups
+            deactivateShield();
+            ghostActive = false;
+            lightningFlashAlpha = 0;
+
+            // Reset boss state
+            boss = null;
+            bossActive = false;
             bossDefeated = [];
+            bossTauntTimer = 0;
+            bossLowHealthReported = false;
+            stopBossMusic();
+            document.getElementById('bossHealthContainer').classList.remove('show');
+            document.getElementById('bossTaunt').classList.remove('show');
+
+            // Reset background
+            initBackground();
+
+            // Reset game timer
+            gameStartTime = Date.now();
+            gameDuration = 0;
 
             // Update UI
             document.getElementById('score').textContent = score;
             document.getElementById('levelDisplay').textContent = 'Level 1';
+            document.getElementById('livesDisplay').textContent = '❤️'.repeat(lives);
 
-            // Respawn player and continue game
-            respawnPlayer();
-            showNotification('Restarting from Level 1');
+            // Ensure game is running
+            gameRunning = true;
+            gamePaused = false;
+
+            showNotification('Starting new game from Level 1');
         }
 
         // Continue saved game (for authenticated users from home screen)
@@ -6556,25 +6615,32 @@
         function defeatBoss() {
             if (!boss) return;
 
+            // Capture boss reference before it gets nulled
+            const defeatedBoss = {
+                x: boss.x,
+                y: boss.y,
+                width: boss.width,
+                height: boss.height,
+                isSuper: boss.isSuper
+            };
+
             // Epic explosion
             for (let i = 0; i < 10; i++) {
                 setTimeout(() => {
-                    if (boss) {
-                        createBigExplosion(
-                            boss.x + (Math.random() - 0.5) * boss.width,
-                            boss.y + (Math.random() - 0.5) * boss.height
-                        );
-                        playBigExplosion();
-                    }
+                    createBigExplosion(
+                        defeatedBoss.x + (Math.random() - 0.5) * defeatedBoss.width,
+                        defeatedBoss.y + (Math.random() - 0.5) * defeatedBoss.height
+                    );
+                    playBigExplosion();
                 }, i * 150);
             }
 
             // Final explosion and cleanup
             setTimeout(() => {
-                createBigExplosion(boss.x, boss.y);
+                createBigExplosion(defeatedBoss.x, defeatedBoss.y);
                 for (let i = 0; i < 100; i++) {
                     particles.push({
-                        x: boss.x, y: boss.y,
+                        x: defeatedBoss.x, y: defeatedBoss.y,
                         vx: (Math.random() - 0.5) * 600,
                         vy: (Math.random() - 0.5) * 600,
                         size: Math.random() * 8 + 4,
@@ -6589,7 +6655,7 @@
 
                 // Report boss defeat action
                 const defeatedLevel = level;
-                const wasSuper = boss.isSuper;
+                const wasSuper = defeatedBoss.isSuper;
                 reportAction('defeated_boss', { bossLevel: defeatedLevel, isSuper: wasSuper });
                 // Report game event for server score validation
                 reportGameEvent('boss_defeated', { bossLevel: defeatedLevel, isSuper: wasSuper });
