@@ -1556,7 +1556,8 @@
         }
 
         // === LIVE PLAYERS SYSTEM ===
-        let myPlayerId = null;
+        let myPlayerId = null;      // Database player ID (UUID)
+        let livePlayerId = null;    // Redis live player ID (8-char)
         let myPlayerName = '';
         let mySessionId = null;
         let livePlayers = [];
@@ -1655,13 +1656,14 @@
                 });
                 if (response.ok) {
                     const data = await response.json();
+                    livePlayerId = data.playerId; // Always use Redis player ID for live system
                     if (!myPlayerId) myPlayerId = data.playerId;
                     if (!myPlayerName) {
                         myPlayerName = data.name;
                         savePlayerName(data.name);
                     }
                     livePlayers = data.players || [];
-                    console.log('Joined as:', myPlayerName, 'ID:', myPlayerId);
+                    console.log('Joined as:', myPlayerName, 'LiveID:', livePlayerId);
                     return true;
                 }
             } catch (e) { console.error('Failed to join as player:', e); }
@@ -1669,7 +1671,7 @@
         }
 
         async function updatePlayerStatus(status) {
-            if (!myPlayerId) return;
+            if (!livePlayerId) return;
             // Update game duration
             if (gameStartTime) {
                 gameDuration = Math.floor((Date.now() - gameStartTime) / 1000);
@@ -1679,7 +1681,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        playerId: myPlayerId,
+                        playerId: livePlayerId,
                         score: score,
                         level: level,
                         status: status,
@@ -1702,19 +1704,19 @@
         }
 
         async function reportAction(action, details = null) {
-            if (!myPlayerId) return;
+            if (!livePlayerId) return;
             try {
                 await fetch(`${API_BASE}/api/players/action`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        playerId: myPlayerId,
+                        playerId: livePlayerId,
                         sessionId: mySessionId,
                         action: action,
                         details: details
                     })
                 });
-            } catch (e) { console.error('Failed to report action:', e); }
+            } catch (e) { /* Silently ignore */ }
         }
 
         async function startGameSession() {
@@ -1754,15 +1756,15 @@
         }
 
         async function leaveAsPlayer() {
-            if (!myPlayerId) return;
+            if (!livePlayerId) return;
             try {
                 await fetch(`${API_BASE}/api/players/leave`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ playerId: myPlayerId })
+                    body: JSON.stringify({ playerId: livePlayerId })
                 });
-            } catch (e) { console.error('Failed to leave:', e); }
-            myPlayerId = null;
+            } catch (e) { /* Silently ignore */ }
+            livePlayerId = null;
         }
 
         // Game state broadcasting for spectators
@@ -1770,7 +1772,7 @@
         const BROADCAST_INTERVAL = 150; // ms between broadcasts
 
         async function broadcastGameState() {
-            if (!myPlayerId || mySpectatorCount === 0) return;
+            if (!livePlayerId || mySpectatorCount === 0) return;
             if (!gameRunning || lives <= 0) return;
 
             const now = Date.now();
@@ -1800,7 +1802,7 @@
                 await fetch(`${API_BASE}/api/players/gamestate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ playerId: myPlayerId, state })
+                    body: JSON.stringify({ playerId: livePlayerId, state })
                 });
             } catch (e) { /* Silently ignore broadcast errors */ }
         }
@@ -2528,8 +2530,8 @@
 
         // Leave on page unload
         window.addEventListener('beforeunload', () => {
-            if (myPlayerId) {
-                navigator.sendBeacon(`${API_BASE}/api/players/leave`, JSON.stringify({ playerId: myPlayerId }));
+            if (livePlayerId) {
+                navigator.sendBeacon(`${API_BASE}/api/players/leave`, JSON.stringify({ playerId: livePlayerId }));
             }
         });
 
