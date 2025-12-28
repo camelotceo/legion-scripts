@@ -63,6 +63,21 @@ def generate_new_continue_key():
     return 'FJ-' + ''.join(random.choices(chars, k=9))
 
 
+def sanitize_username(name):
+    """Sanitize username to only allow alphanumeric and underscore."""
+    import re
+    # Replace invalid chars with underscore
+    sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+    # Remove consecutive underscores
+    sanitized = re.sub(r'_+', '_', sanitized)
+    # Remove leading/trailing underscores
+    sanitized = sanitized.strip('_')
+    # Ensure not empty
+    if not sanitized:
+        sanitized = 'Player_' + ''.join(random.choices(string.ascii_uppercase, k=4))
+    return sanitized[:12]
+
+
 def migrate_leaderboard(conn):
     """Migrate leaderboard.json to database."""
     if not LEADERBOARD_FILE.exists():
@@ -83,7 +98,8 @@ def migrate_leaderboard(conn):
 
     for difficulty, entries in data.items():
         for entry in entries:
-            name = entry.get('name', 'Anonymous')[:12]
+            display_name = entry.get('name', 'Anonymous')[:12]
+            username = sanitize_username(display_name)
             score = entry.get('score', 0)
             level = entry.get('level', 1)
             duration = entry.get('duration', 0)
@@ -100,7 +116,7 @@ def migrate_leaderboard(conn):
             # Get or create player
             cur.execute(
                 "SELECT id FROM players WHERE LOWER(username) = LOWER(%s)",
-                (name,)
+                (username,)
             )
             player = cur.fetchone()
 
@@ -113,11 +129,11 @@ def migrate_leaderboard(conn):
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (username) DO UPDATE SET last_seen = EXCLUDED.last_seen
                     RETURNING id
-                """, (player_id, name, name, created_at, created_at))
+                """, (player_id, username, display_name, created_at, created_at))
                 result = cur.fetchone()
                 if result:
                     player_id = result['id']
-                players_created.add(name)
+                players_created.add(username)
 
             # Create game session for leaderboard entry
             game_session_id = generate_uuid()
@@ -169,7 +185,8 @@ def migrate_player_progress(conn):
     keys_to_email = []
 
     for name, progress in data.items():
-        name = name[:12]
+        display_name = name[:12]
+        username = sanitize_username(display_name)
         email = progress.get('email')
         difficulty = progress.get('difficulty', 'EASY')
         current_level = progress.get('currentLevel', 1)
@@ -186,7 +203,7 @@ def migrate_player_progress(conn):
         # Get or create player
         cur.execute(
             "SELECT id FROM players WHERE LOWER(username) = LOWER(%s)",
-            (name,)
+            (username,)
         )
         player = cur.fetchone()
 
@@ -206,7 +223,7 @@ def migrate_player_progress(conn):
                     email = COALESCE(players.email, EXCLUDED.email),
                     last_seen = EXCLUDED.last_seen
                 RETURNING id
-            """, (player_id, name, name, email, created_at, datetime.now()))
+            """, (player_id, username, display_name, email, created_at, datetime.now()))
             result = cur.fetchone()
             if result:
                 player_id = result['id']
