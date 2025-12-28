@@ -124,8 +124,8 @@ def migrate_leaderboard(conn):
             cur.execute("""
                 INSERT INTO game_sessions
                 (id, player_id, difficulty, game_mode, started_at, ended_at, duration,
-                 final_score, final_level, is_complete, score_validated, validation_score)
-                VALUES (%s, %s, %s, 'single', %s, %s, %s, %s, %s, true, true, %s)
+                 final_score, final_level, score_validated, validation_score)
+                VALUES (%s, %s, %s, 'single', %s, %s, %s, %s, %s, true, %s)
             """, (
                 game_session_id, player_id, difficulty.upper(),
                 created_at, created_at, duration, score, level, score
