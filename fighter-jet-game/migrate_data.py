@@ -209,24 +209,38 @@ def migrate_player_progress(conn):
 
         if player:
             player_id = player['id']
-            # Update email if provided
+            # Update email if provided (ignore if email already used by another player)
             if email:
-                cur.execute("""
-                    UPDATE players SET email = %s WHERE id = %s AND email IS NULL
-                """, (email, player_id))
+                try:
+                    cur.execute("""
+                        UPDATE players SET email = %s WHERE id = %s AND email IS NULL
+                    """, (email, player_id))
+                except Exception:
+                    pass  # Email already in use by another player
         else:
             player_id = generate_uuid()
-            cur.execute("""
-                INSERT INTO players (id, username, display_name, email, first_seen, last_seen)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (username) DO UPDATE SET
-                    email = COALESCE(players.email, EXCLUDED.email),
-                    last_seen = EXCLUDED.last_seen
-                RETURNING id
-            """, (player_id, username, display_name, email, created_at, datetime.now()))
-            result = cur.fetchone()
-            if result:
-                player_id = result['id']
+            try:
+                cur.execute("""
+                    INSERT INTO players (id, username, display_name, email, first_seen, last_seen)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (username) DO UPDATE SET
+                        last_seen = EXCLUDED.last_seen
+                    RETURNING id
+                """, (player_id, username, display_name, email, created_at, datetime.now()))
+                result = cur.fetchone()
+                if result:
+                    player_id = result['id']
+            except Exception:
+                # Email conflict - try without email
+                cur.execute("""
+                    INSERT INTO players (id, username, display_name, first_seen, last_seen)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (username) DO UPDATE SET last_seen = EXCLUDED.last_seen
+                    RETURNING id
+                """, (player_id, username, display_name, created_at, datetime.now()))
+                result = cur.fetchone()
+                if result:
+                    player_id = result['id']
 
         # Generate new continue key (old keys are insecure 6-char format)
         # Only if player had active keys
