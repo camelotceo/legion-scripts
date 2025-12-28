@@ -28,10 +28,21 @@ CREATE TABLE IF NOT EXISTS players (
     email_verified BOOLEAN DEFAULT FALSE,
     email_verification_token VARCHAR(64),
     email_verification_expires TIMESTAMP WITH TIME ZONE,
+    email_verification_code VARCHAR(6),  -- 6-digit verification code
+    verification_code_expires TIMESTAMP WITH TIME ZONE,
     password_hash VARCHAR(255),  -- bcrypt hash, nullable for email-only auth
 
     -- Device fingerprinting (for anonymous play)
     device_fingerprint VARCHAR(64),
+
+    -- Token economy for continues
+    tokens INTEGER DEFAULT 100,
+
+    -- Game progress (for resume/continue)
+    continues_this_level INTEGER DEFAULT 0,
+    saved_level INTEGER DEFAULT 1,
+    saved_score INTEGER DEFAULT 0,
+    saved_difficulty VARCHAR(10) DEFAULT 'EASY',
 
     -- Stats
     total_games INTEGER DEFAULT 0,

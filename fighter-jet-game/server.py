@@ -734,6 +734,427 @@ def auth_verify_login_link():
     })
 
 
+# === PASSWORD-BASED AUTHENTICATION API ===
+
+@app.route('/api/auth/register-password', methods=['POST'])
+@rate_limit('player_join', by='ip')
+def auth_register_password():
+    """Register a new player with email and password.
+
+    Sends 6-digit verification code to email.
+    """
+    data = request.get_json() or {}
+
+    username = str(data.get('username', '')).strip()[:12]
+    email = str(data.get('email', '')).strip()[:100].lower()
+    password = str(data.get('password', ''))
+
+    if not username:
+        return jsonify({'error': 'Username required'}), 400
+    if not validate_username(username):
+        return jsonify({'error': 'Invalid username. Use only letters, numbers, and underscores.'}), 400
+    if not email or '@' not in email:
+        return jsonify({'error': 'Valid email required'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    ip_address = get_client_ip()
+    fingerprint = get_device_fingerprint()
+
+    try:
+        result = database.register_player_with_password(
+            username=username,
+            email=email,
+            password=password,
+            device_fingerprint=fingerprint,
+            ip_address=ip_address
+        )
+
+        if not result.get('success'):
+            return jsonify({'error': result.get('error', 'Registration failed')}), 400
+
+        # Send verification code email
+        verification_code = result['verification_code']
+        if USE_RESEND:
+            try:
+                resend.Emails.send({
+                    "from": "Fighter Jet Game <games@felican.ai>",
+                    "to": [email],
+                    "subject": f"Your Verification Code: {verification_code}",
+                    "html": f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #1a1a2e; color: #fff; padding: 30px; border-radius: 15px;">
+                        <h1 style="color: #ffd700; text-align: center;">🎮 Fighter Jet Game</h1>
+                        <h2 style="color: #4ade80; text-align: center;">Verify Your Email</h2>
+                        <p style="text-align: center; color: #aaa;">Enter this code to complete your registration:</p>
+                        <div style="background: #2a2a4e; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0;">
+                            <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #4ade80;">{verification_code}</span>
+                        </div>
+                        <p style="color: #888; font-size: 12px; text-align: center;">
+                            This code expires in 10 minutes.
+                        </p>
+                        <hr style="border-color: #333; margin: 20px 0;">
+                        <p style="color: #666; font-size: 11px; text-align: center;">
+                            If you didn't request this, you can safely ignore this email.
+                        </p>
+                    </div>
+                    """
+                })
+                logger.info(f"Verification code sent to {email}")
+            except Exception as e:
+                logger.error(f"Failed to send verification email: {e}")
+
+        # Audit log
+        database.log_audit(
+            action='player_registered_password',
+            player_id=result['player_id'],
+            ip_address=ip_address,
+            new_value={'username': username, 'email': email}
+        )
+
+        return jsonify({
+            'success': True,
+            'playerId': result['player_id'],
+            'username': result['username'],
+            'email': result['email'],
+            'message': 'Verification code sent to your email'
+        })
+
+    except Exception as e:
+        log_error('auth_register_password', e, {'username': username, 'email': email})
+        return jsonify({'error': 'Registration failed'}), 500
+
+
+@app.route('/api/auth/verify-code', methods=['POST'])
+@rate_limit('verify_login', by='ip')
+def auth_verify_code():
+    """Verify email with 6-digit code.
+
+    Creates a session on success (auto-login).
+    """
+    data = request.get_json() or {}
+
+    email = str(data.get('email', '')).strip()[:100].lower()
+    code = str(data.get('code', '')).strip()[:6]
+
+    if not email or '@' not in email:
+        return jsonify({'error': 'Email required'}), 400
+    if not code or len(code) != 6:
+        return jsonify({'error': '6-digit verification code required'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    ip_address = get_client_ip()
+    fingerprint = get_device_fingerprint()
+    user_agent = request.headers.get('User-Agent', '')
+
+    try:
+        result = database.verify_email_with_code(
+            email=email,
+            code=code,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            device_fingerprint=fingerprint
+        )
+
+        if not result.get('success'):
+            database.log_audit(
+                action='verify_code_failed',
+                ip_address=ip_address,
+                new_value={'email': email}
+            )
+            return jsonify({'error': result.get('error', 'Verification failed')}), 400
+
+        # Audit log
+        database.log_audit(
+            action='email_verified',
+            player_id=result['player_id'],
+            ip_address=ip_address
+        )
+
+        return jsonify({
+            'success': True,
+            'playerId': result['player_id'],
+            'username': result['username'],
+            'displayName': result['display_name'],
+            'email': result['email'],
+            'tokens': result['tokens'],
+            'token': result['token'],
+            'expiresAt': result['expires_at']
+        })
+
+    except Exception as e:
+        log_error('auth_verify_code', e, {'email': email})
+        return jsonify({'error': 'Verification failed'}), 500
+
+
+@app.route('/api/auth/login-password', methods=['POST'])
+@rate_limit('player_join', by='ip')
+def auth_login_password():
+    """Login with email/username and password."""
+    data = request.get_json() or {}
+
+    email_or_username = str(data.get('emailOrUsername', '')).strip()[:100]
+    password = str(data.get('password', ''))
+
+    if not email_or_username:
+        return jsonify({'error': 'Email or username required'}), 400
+    if not password:
+        return jsonify({'error': 'Password required'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    ip_address = get_client_ip()
+    fingerprint = get_device_fingerprint()
+    user_agent = request.headers.get('User-Agent', '')
+
+    try:
+        result = database.login_with_password(
+            email_or_username=email_or_username,
+            password=password,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            device_fingerprint=fingerprint
+        )
+
+        if not result.get('success'):
+            database.log_audit(
+                action='login_failed',
+                ip_address=ip_address,
+                new_value={'identifier': email_or_username}
+            )
+            response = {'error': result.get('error', 'Login failed')}
+            if result.get('needs_verification'):
+                response['needsVerification'] = True
+            return jsonify(response), 401
+
+        # Audit log
+        database.log_audit(
+            action='login_password',
+            player_id=result['player_id'],
+            ip_address=ip_address
+        )
+
+        return jsonify({
+            'success': True,
+            'playerId': result['player_id'],
+            'username': result['username'],
+            'displayName': result['display_name'],
+            'email': result['email'],
+            'tokens': result['tokens'],
+            'savedLevel': result['saved_level'],
+            'savedScore': result['saved_score'],
+            'savedDifficulty': result['saved_difficulty'],
+            'continuesThisLevel': result['continues_this_level'],
+            'token': result['token'],
+            'expiresAt': result['expires_at']
+        })
+
+    except Exception as e:
+        log_error('auth_login_password', e, {'identifier': email_or_username})
+        return jsonify({'error': 'Login failed'}), 500
+
+
+@app.route('/api/auth/resend-code', methods=['POST'])
+@rate_limit('request_key', by='ip')
+def auth_resend_code():
+    """Resend verification code to email."""
+    data = request.get_json() or {}
+
+    email = str(data.get('email', '')).strip()[:100].lower()
+
+    if not email or '@' not in email:
+        return jsonify({'error': 'Valid email required'}), 400
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    try:
+        result = database.resend_verification_code(email)
+
+        if not result.get('success'):
+            return jsonify({'error': result.get('error', 'Failed to resend code')}), 400
+
+        # Send verification code email
+        verification_code = result['verification_code']
+        if USE_RESEND:
+            try:
+                resend.Emails.send({
+                    "from": "Fighter Jet Game <games@felican.ai>",
+                    "to": [email],
+                    "subject": f"Your Verification Code: {verification_code}",
+                    "html": f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #1a1a2e; color: #fff; padding: 30px; border-radius: 15px;">
+                        <h1 style="color: #ffd700; text-align: center;">🎮 Fighter Jet Game</h1>
+                        <h2 style="color: #4ade80; text-align: center;">Your New Code</h2>
+                        <div style="background: #2a2a4e; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0;">
+                            <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #4ade80;">{verification_code}</span>
+                        </div>
+                        <p style="color: #888; font-size: 12px; text-align: center;">
+                            This code expires in 10 minutes.
+                        </p>
+                    </div>
+                    """
+                })
+            except Exception as e:
+                logger.error(f"Failed to send verification email: {e}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Verification code sent to your email'
+        })
+
+    except Exception as e:
+        log_error('auth_resend_code', e, {'email': email})
+        return jsonify({'error': 'Failed to resend code'}), 500
+
+
+# === PLAYER PROFILE & TOKEN API ===
+
+@app.route('/api/player/profile', methods=['GET'])
+@require_auth
+def get_player_profile():
+    """Get authenticated player's full profile."""
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    try:
+        profile = database.get_player_profile(g.player_id)
+        if not profile:
+            return jsonify({'error': 'Player not found'}), 404
+
+        # Convert datetime objects in games
+        for game in profile.get('games', []):
+            for key in ['started_at', 'ended_at']:
+                if game.get(key) and hasattr(game[key], 'isoformat'):
+                    game[key] = game[key].isoformat()
+
+        return jsonify(profile)
+
+    except Exception as e:
+        log_error('get_player_profile', e, {'player_id': g.player_id})
+        return jsonify({'error': 'Failed to get profile'}), 500
+
+
+@app.route('/api/player/use-token', methods=['POST'])
+@require_auth
+def use_continue_token():
+    """Use 1 token for a continue.
+
+    Returns new token balance and continues count.
+    """
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    try:
+        result = database.use_continue_token(g.player_id)
+
+        if not result.get('success'):
+            return jsonify({
+                'error': result.get('error', 'Failed to use token'),
+                'tokens': result.get('tokens', 0)
+            }), 400
+
+        # Audit log
+        database.log_audit(
+            action='token_used',
+            player_id=g.player_id,
+            ip_address=get_client_ip(),
+            new_value={'tokens_remaining': result['tokens'], 'continues': result['continues_this_level']}
+        )
+
+        return jsonify({
+            'success': True,
+            'tokens': result['tokens'],
+            'continuesThisLevel': result['continues_this_level']
+        })
+
+    except Exception as e:
+        log_error('use_continue_token', e, {'player_id': g.player_id})
+        return jsonify({'error': 'Failed to use token'}), 500
+
+
+@app.route('/api/player/save-game-progress', methods=['POST'])
+@require_auth
+def save_game_progress():
+    """Save player's game progress (called on level advance).
+
+    Resets continues_this_level to 0.
+    """
+    data = request.get_json() or {}
+
+    level = int(data.get('level', 1))
+    score = int(data.get('score', 0))
+    difficulty = str(data.get('difficulty', 'EASY'))[:10].upper()
+
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    try:
+        result = database.save_player_progress(g.player_id, level, score, difficulty)
+
+        if not result.get('success'):
+            return jsonify({'error': result.get('error', 'Failed to save progress')}), 400
+
+        return jsonify({
+            'success': True,
+            'savedLevel': result['saved_level'],
+            'savedScore': result['saved_score'],
+            'savedDifficulty': result['saved_difficulty'],
+            'tokens': result['tokens']
+        })
+
+    except Exception as e:
+        log_error('save_game_progress', e, {'player_id': g.player_id})
+        return jsonify({'error': 'Failed to save progress'}), 500
+
+
+@app.route('/api/player/reset-level-continues', methods=['POST'])
+@require_auth
+def reset_level_continues():
+    """Reset continues_this_level to 0.
+
+    Called when player restarts at level beginning after using 3 continues.
+    """
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    try:
+        result = database.reset_continues_for_level(g.player_id)
+
+        if not result.get('success'):
+            return jsonify({'error': result.get('error', 'Failed to reset continues')}), 400
+
+        return jsonify({
+            'success': True,
+            'continuesThisLevel': 0
+        })
+
+    except Exception as e:
+        log_error('reset_level_continues', e, {'player_id': g.player_id})
+        return jsonify({'error': 'Failed to reset continues'}), 500
+
+
+@app.route('/api/player/tokens', methods=['GET'])
+@require_auth
+def get_player_tokens():
+    """Get player's current token balance."""
+    if not USE_POSTGRES:
+        return jsonify({'error': 'Not available'}), 503
+
+    try:
+        tokens = database.get_player_tokens(g.player_id)
+        return jsonify({'tokens': tokens})
+
+    except Exception as e:
+        log_error('get_player_tokens', e, {'player_id': g.player_id})
+        return jsonify({'error': 'Failed to get tokens'}), 500
+
+
 # === GAME SESSION API ===
 
 @app.route('/api/game/start', methods=['POST'])

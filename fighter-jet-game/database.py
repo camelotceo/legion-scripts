@@ -356,6 +356,414 @@ def ban_player(player_id: str, reason: str, expires: datetime = None):
 
 
 # =============================================================================
+# PASSWORD-BASED AUTHENTICATION
+# =============================================================================
+
+def generate_verification_code() -> str:
+    """Generate a 6-digit verification code."""
+    return ''.join(secrets.choice('0123456789') for _ in range(6))
+
+
+def register_player_with_password(username: str, email: str, password: str,
+                                   device_fingerprint: str = None,
+                                   ip_address: str = None) -> Dict:
+    """Register a new player with email/password authentication.
+
+    Returns player data and sends verification code via email.
+    """
+    # Hash password with bcrypt
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
+
+    # Generate 6-digit verification code
+    verification_code = generate_verification_code()
+    code_expires = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            try:
+                # Check if username already exists
+                cur.execute("SELECT 1 FROM players WHERE username = %s", (username.lower(),))
+                if cur.fetchone():
+                    return {'error': 'Username already taken', 'success': False}
+
+                # Check if email already exists
+                cur.execute("SELECT 1 FROM players WHERE LOWER(email) = LOWER(%s)", (email,))
+                if cur.fetchone():
+                    return {'error': 'Email already registered', 'success': False}
+
+                # Create player with password
+                cur.execute(
+                    """INSERT INTO players
+                       (username, display_name, email, password_hash,
+                        email_verification_code, verification_code_expires,
+                        device_fingerprint, last_ip, tokens)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 100)
+                       RETURNING id, username, display_name, email, tokens""",
+                    (username.lower(), username, email.lower(), password_hash,
+                     verification_code, code_expires, device_fingerprint, ip_address)
+                )
+                player = dict(cur.fetchone())
+
+                return {
+                    'success': True,
+                    'player_id': str(player['id']),
+                    'username': player['username'],
+                    'email': player['email'],
+                    'verification_code': verification_code,  # To be sent via email
+                    'code_expires_at': code_expires.isoformat()
+                }
+            except psycopg2.IntegrityError as e:
+                return {'error': 'Registration failed - duplicate entry', 'success': False}
+
+
+def verify_email_with_code(email: str, code: str, ip_address: str = None,
+                           user_agent: str = None, device_fingerprint: str = None) -> Dict:
+    """Verify email with 6-digit code and create session.
+
+    Returns session token on success.
+    """
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Find player with matching email and code
+            cur.execute(
+                """SELECT id, username, display_name, email, email_verification_code,
+                          verification_code_expires, tokens
+                   FROM players
+                   WHERE LOWER(email) = LOWER(%s)
+                   AND email_verification_code = %s""",
+                (email, code)
+            )
+            player = cur.fetchone()
+
+            if not player:
+                return {'error': 'Invalid verification code', 'success': False}
+
+            # Check if code expired
+            if player['verification_code_expires']:
+                if player['verification_code_expires'].replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+                    return {'error': 'Verification code expired', 'success': False}
+
+            # Mark email as verified and clear the code
+            cur.execute(
+                """UPDATE players SET
+                   email_verified = TRUE,
+                   email_verification_code = NULL,
+                   verification_code_expires = NULL,
+                   device_fingerprint = COALESCE(%s, device_fingerprint),
+                   last_seen = NOW(),
+                   last_ip = %s
+                   WHERE id = %s""",
+                (device_fingerprint, ip_address, player['id'])
+            )
+
+    # Create session for auto-login
+    session = create_session(
+        player_id=str(player['id']),
+        ip_address=ip_address or '0.0.0.0',
+        user_agent=user_agent,
+        device_fingerprint=device_fingerprint
+    )
+
+    return {
+        'success': True,
+        'player_id': str(player['id']),
+        'username': player['username'],
+        'display_name': player['display_name'],
+        'email': player['email'],
+        'tokens': player['tokens'],
+        'token': session['token'],
+        'expires_at': session['expires_at']
+    }
+
+
+def login_with_password(email_or_username: str, password: str, ip_address: str = None,
+                        user_agent: str = None, device_fingerprint: str = None) -> Dict:
+    """Login with email/username and password.
+
+    Returns session token on success.
+    """
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Find player by email or username
+            cur.execute(
+                """SELECT id, username, display_name, email, email_verified,
+                          password_hash, is_banned, ban_reason, tokens,
+                          saved_level, saved_score, saved_difficulty, continues_this_level
+                   FROM players
+                   WHERE LOWER(email) = LOWER(%s) OR username = %s""",
+                (email_or_username, email_or_username.lower())
+            )
+            player = cur.fetchone()
+
+            if not player:
+                return {'error': 'Invalid credentials', 'success': False}
+
+            # Check if player has a password set
+            if not player['password_hash']:
+                return {'error': 'No password set for this account', 'success': False}
+
+            # Verify password
+            if not bcrypt.checkpw(password.encode('utf-8'), player['password_hash'].encode('utf-8')):
+                return {'error': 'Invalid credentials', 'success': False}
+
+            # Check if email is verified
+            if not player['email_verified']:
+                return {'error': 'Email not verified', 'success': False, 'needs_verification': True}
+
+            # Check if banned
+            if player['is_banned']:
+                return {'error': f'Account banned: {player["ban_reason"]}', 'success': False}
+
+            # Update last seen and device fingerprint
+            cur.execute(
+                """UPDATE players SET
+                   last_seen = NOW(),
+                   last_ip = %s,
+                   device_fingerprint = COALESCE(%s, device_fingerprint)
+                   WHERE id = %s""",
+                (ip_address, device_fingerprint, player['id'])
+            )
+
+    # Create session
+    session = create_session(
+        player_id=str(player['id']),
+        ip_address=ip_address or '0.0.0.0',
+        user_agent=user_agent,
+        device_fingerprint=device_fingerprint
+    )
+
+    return {
+        'success': True,
+        'player_id': str(player['id']),
+        'username': player['username'],
+        'display_name': player['display_name'],
+        'email': player['email'],
+        'tokens': player['tokens'],
+        'saved_level': player['saved_level'],
+        'saved_score': player['saved_score'],
+        'saved_difficulty': player['saved_difficulty'],
+        'continues_this_level': player['continues_this_level'],
+        'token': session['token'],
+        'expires_at': session['expires_at']
+    }
+
+
+def resend_verification_code(email: str) -> Dict:
+    """Resend a new verification code to email.
+
+    Returns the new code (to be sent via email).
+    """
+    verification_code = generate_verification_code()
+    code_expires = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """UPDATE players SET
+                   email_verification_code = %s,
+                   verification_code_expires = %s
+                   WHERE LOWER(email) = LOWER(%s)
+                   AND email_verified = FALSE
+                   RETURNING id, username, email""",
+                (verification_code, code_expires, email)
+            )
+            result = cur.fetchone()
+
+            if not result:
+                return {'error': 'Email not found or already verified', 'success': False}
+
+            return {
+                'success': True,
+                'player_id': str(result['id']),
+                'username': result['username'],
+                'email': result['email'],
+                'verification_code': verification_code,
+                'code_expires_at': code_expires.isoformat()
+            }
+
+
+# =============================================================================
+# TOKEN ECONOMY & CONTINUES
+# =============================================================================
+
+def use_continue_token(player_id: str) -> Dict:
+    """Use 1 token for a continue.
+
+    Deducts 1 token and increments continues_this_level.
+    Returns new token balance and continues count.
+    """
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get current token count
+            cur.execute(
+                "SELECT tokens, continues_this_level FROM players WHERE id = %s",
+                (player_id,)
+            )
+            player = cur.fetchone()
+
+            if not player:
+                return {'error': 'Player not found', 'success': False}
+
+            if player['tokens'] <= 0:
+                return {'error': 'No tokens remaining', 'success': False, 'tokens': 0}
+
+            # Deduct token and increment continues
+            cur.execute(
+                """UPDATE players SET
+                   tokens = tokens - 1,
+                   continues_this_level = continues_this_level + 1
+                   WHERE id = %s
+                   RETURNING tokens, continues_this_level""",
+                (player_id,)
+            )
+            result = cur.fetchone()
+
+            return {
+                'success': True,
+                'tokens': result['tokens'],
+                'continues_this_level': result['continues_this_level']
+            }
+
+
+def save_player_progress(player_id: str, level: int, score: int, difficulty: str) -> Dict:
+    """Save player's game progress and reset continues for new level.
+
+    Called when player advances to a new level.
+    """
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """UPDATE players SET
+                   saved_level = %s,
+                   saved_score = %s,
+                   saved_difficulty = %s,
+                   continues_this_level = 0
+                   WHERE id = %s
+                   RETURNING saved_level, saved_score, saved_difficulty, tokens""",
+                (level, score, difficulty.upper(), player_id)
+            )
+            result = cur.fetchone()
+
+            if not result:
+                return {'error': 'Player not found', 'success': False}
+
+            return {
+                'success': True,
+                'saved_level': result['saved_level'],
+                'saved_score': result['saved_score'],
+                'saved_difficulty': result['saved_difficulty'],
+                'tokens': result['tokens']
+            }
+
+
+def reset_continues_for_level(player_id: str) -> Dict:
+    """Reset continues_this_level to 0.
+
+    Called when player restarts at level beginning after using 3 continues.
+    """
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """UPDATE players SET continues_this_level = 0
+                   WHERE id = %s
+                   RETURNING continues_this_level""",
+                (player_id,)
+            )
+            result = cur.fetchone()
+
+            if not result:
+                return {'error': 'Player not found', 'success': False}
+
+            return {'success': True, 'continues_this_level': 0}
+
+
+def get_player_profile(player_id: str) -> Dict:
+    """Get full player profile with stats, tokens, and game history."""
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get player data
+            cur.execute(
+                """SELECT id, username, display_name, email, email_verified,
+                          tokens, saved_level, saved_score, saved_difficulty,
+                          continues_this_level, total_games, total_score,
+                          total_playtime, best_score, best_level, victories,
+                          first_seen, last_seen
+                   FROM players WHERE id = %s""",
+                (player_id,)
+            )
+            player = cur.fetchone()
+
+            if not player:
+                return None
+
+            # Get recent game history
+            cur.execute(
+                """SELECT id, started_at, ended_at, duration, final_score as score,
+                          final_level as level, difficulty, death_reason,
+                          bosses_defeated, enemies_killed, is_victory
+                   FROM game_sessions
+                   WHERE player_id = %s AND ended_at IS NOT NULL
+                   ORDER BY ended_at DESC
+                   LIMIT 50""",
+                (player_id,)
+            )
+            games = [dict(row) for row in cur.fetchall()]
+
+            return {
+                'player': {
+                    'id': str(player['id']),
+                    'username': player['username'],
+                    'display_name': player['display_name'],
+                    'email': player['email'],
+                    'email_verified': player['email_verified'],
+                    'tokens': player['tokens'],
+                    'saved_level': player['saved_level'],
+                    'saved_score': player['saved_score'],
+                    'saved_difficulty': player['saved_difficulty'],
+                    'continues_this_level': player['continues_this_level']
+                },
+                'stats': {
+                    'total_games': player['total_games'],
+                    'total_score': player['total_score'],
+                    'total_playtime': player['total_playtime'],
+                    'best_score': player['best_score'],
+                    'best_level': player['best_level'],
+                    'victories': player['victories'],
+                    'first_seen': player['first_seen'].isoformat() if player['first_seen'] else None,
+                    'last_seen': player['last_seen'].isoformat() if player['last_seen'] else None
+                },
+                'games': games
+            }
+
+
+def get_player_tokens(player_id: str) -> int:
+    """Get player's current token balance."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT tokens FROM players WHERE id = %s", (player_id,))
+            result = cur.fetchone()
+            return result[0] if result else 0
+
+
+def add_tokens(player_id: str, amount: int) -> Dict:
+    """Add tokens to player's balance (for future token purchases)."""
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """UPDATE players SET tokens = tokens + %s
+                   WHERE id = %s
+                   RETURNING tokens""",
+                (amount, player_id)
+            )
+            result = cur.fetchone()
+
+            if not result:
+                return {'error': 'Player not found', 'success': False}
+
+            return {'success': True, 'tokens': result['tokens']}
+
+
+# =============================================================================
 # SESSION MANAGEMENT
 # =============================================================================
 

@@ -567,6 +567,53 @@
         #respawnModal .btn-quit { padding: 10px 20px; font-size: 14px; background: #555; color: #fff; border: none; border-radius: 20px; cursor: pointer; margin: 5px; }
         #respawnModal .status-msg { color: #888; font-size: 12px; margin-top: 10px; }
         #respawnModal .error-msg { color: #ff6b6b; font-size: 12px; margin-top: 10px; }
+        /* Auth Modals (Login, Register, Verify, Profile) */
+        .auth-modal .modal { max-width: 400px; text-align: center; }
+        .auth-modal h2 { color: #ffd700; margin-bottom: 15px; }
+        .auth-modal p { color: #aaa; font-size: 14px; margin: 10px 0; }
+        .auth-modal .form-group { margin: 15px 0; text-align: left; }
+        .auth-modal .form-group label { display: block; color: #888; font-size: 12px; margin-bottom: 5px; }
+        .auth-modal .form-input { width: 100%; padding: 12px; font-size: 14px; border: 2px solid #444; background: #2a2a4e; color: #fff; border-radius: 8px; box-sizing: border-box; }
+        .auth-modal .form-input:focus { border-color: #4ade80; outline: none; }
+        .auth-modal .btn-primary { width: 100%; padding: 14px; font-size: 16px; background: linear-gradient(135deg, #4ade80, #22c55e); color: #000; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; margin-top: 15px; }
+        .auth-modal .btn-primary:hover { transform: scale(1.02); }
+        .auth-modal .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .auth-modal .btn-secondary { width: 100%; padding: 12px; font-size: 14px; background: #555; color: #fff; border: none; border-radius: 20px; cursor: pointer; margin-top: 10px; }
+        .auth-modal .btn-secondary:hover { background: #666; }
+        .auth-modal .error-msg { color: #ff6b6b; font-size: 12px; margin-top: 10px; }
+        .auth-modal .link-text { color: #6af; cursor: pointer; font-size: 13px; margin-top: 15px; display: inline-block; }
+        .auth-modal .link-text:hover { text-decoration: underline; }
+        .auth-modal .verify-code-input { font-size: 24px; text-align: center; letter-spacing: 8px; font-family: monospace; }
+        /* Profile Modal */
+        #profileModal .modal { max-width: 500px; }
+        #profileModal .profile-header { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
+        #profileModal .profile-avatar { width: 60px; height: 60px; background: linear-gradient(135deg, #4ade80, #22c55e); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+        #profileModal .profile-info { text-align: left; }
+        #profileModal .profile-info .username { color: #fff; font-size: 20px; font-weight: bold; }
+        #profileModal .profile-info .email { color: #888; font-size: 12px; }
+        #profileModal .token-balance { background: linear-gradient(135deg, #1a3a1a, #0a1f0a); border: 2px solid #4ade80; padding: 15px; border-radius: 10px; margin: 15px 0; text-align: center; }
+        #profileModal .token-balance .label { color: #888; font-size: 12px; }
+        #profileModal .token-balance .value { color: #4ade80; font-size: 36px; font-weight: bold; }
+        #profileModal .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0; }
+        #profileModal .stat-item { background: #2a2a4e; padding: 10px; border-radius: 8px; text-align: center; }
+        #profileModal .stat-item .label { color: #888; font-size: 10px; }
+        #profileModal .stat-item .value { color: #fff; font-size: 18px; font-weight: bold; }
+        #profileModal .history-section { margin-top: 15px; text-align: left; }
+        #profileModal .history-section h4 { color: #ffd700; font-size: 14px; margin-bottom: 10px; }
+        #profileModal .history-item { display: flex; justify-content: space-between; padding: 8px; background: #1a1a2e; border-radius: 5px; margin-bottom: 5px; font-size: 12px; }
+        #profileModal .history-item span { color: #aaa; }
+        /* Token Display in Header */
+        #tokenDisplay { display: none; align-items: center; gap: 5px; padding: 8px 15px; background: rgba(74, 222, 128, 0.1); border: 1px solid #4ade80; border-radius: 20px; margin-right: 10px; }
+        #tokenDisplay .token-icon { font-size: 16px; }
+        #tokenDisplay .token-count { color: #4ade80; font-weight: bold; font-size: 14px; }
+        /* Auth Buttons in Header */
+        #authButtons { display: flex; gap: 10px; align-items: center; position: absolute; top: 15px; right: 15px; z-index: 100; }
+        #loginBtn, #profileBtn { padding: 8px 20px; font-size: 13px; background: linear-gradient(135deg, #6af, #48f); color: #fff; border: none; border-radius: 20px; cursor: pointer; }
+        #loginBtn:hover, #profileBtn:hover { transform: scale(1.05); }
+        #profileBtn { display: none; background: linear-gradient(135deg, #4ade80, #22c55e); color: #000; }
+        /* Continue Game Button */
+        #continueGameBtn { display: none; margin-top: 10px; padding: 12px 30px; font-size: 16px; background: linear-gradient(135deg, #ffd700, #ffb700); color: #000; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; }
+        #continueGameBtn:hover { transform: scale(1.05); }
         /* Start screen buttons */
         .start-buttons { display: flex; gap: 10px; margin: 15px 0; }
         .btn-secondary {
@@ -707,12 +754,22 @@
             <div id="lobbyPlayersList"></div>
         </div>
         <div id="startScreen">
+            <!-- Auth Buttons -->
+            <div id="authButtons">
+                <div id="tokenDisplay">
+                    <span class="token-icon">🪙</span>
+                    <span class="token-count" id="tokenCount">0</span>
+                </div>
+                <button id="loginBtn" onclick="showLoginModal()">Login</button>
+                <button id="profileBtn" onclick="showProfileModal()">Profile</button>
+            </div>
             <h1>Legion's Space Fight</h1>
             <div class="start-buttons">
                 <button class="btn" onclick="openModeSelectModal()">New Game</button>
                 <button class="btn" onclick="openContinueModal()">Continue Game</button>
                 <button class="btn-secondary" onclick="openInstructionsModal()">How to Play</button>
             </div>
+            <button id="continueGameBtn" onclick="continueSavedGame()">Continue Saved Game</button>
             <div id="startLeaderboard">
                 <h3 style="color: #ffd700; margin-bottom: 10px; font-size: 16px;">🏆 High Scores</h3>
                 <div class="leaderboard-grid" id="leaderboardGrid">
@@ -956,10 +1013,10 @@
                 </div>
                 <p class="respawn-info" id="respawnMessage">Respawning...</p>
 
-                <!-- Free respawn section -->
+                <!-- Free respawn section (unauthenticated players) -->
                 <div id="freeRespawnSection">
-                    <button class="btn-respawn" onclick="doRespawn()">Continue (Free)</button>
-                    <p class="status-msg"><span id="respawnsRemaining">3</span> free respawns remaining</p>
+                    <button class="btn-respawn" onclick="doFreeRespawn()">Continue (Free)</button>
+                    <p class="status-msg"><span id="respawnsRemaining">3</span> free continues remaining</p>
                 </div>
 
                 <!-- Email required section (hidden initially) -->
@@ -997,6 +1054,118 @@
                 </div>
             </div>
         </div>
+
+        <!-- Login Modal -->
+        <div id="loginModal" class="modal-overlay auth-modal">
+            <div class="modal">
+                <h2>Login</h2>
+                <p>Sign in to continue your game</p>
+                <div class="form-group">
+                    <label>Email or Username</label>
+                    <input type="text" id="loginEmailOrUsername" class="form-input" placeholder="email@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" class="form-input" placeholder="Enter password" onkeypress="if(event.key==='Enter')loginWithPassword()">
+                </div>
+                <p id="loginError" class="error-msg" style="display: none;"></p>
+                <button id="loginBtn2" class="btn-primary" onclick="loginWithPassword()">Login</button>
+                <p class="link-text" onclick="hideLoginModal(); showRegisterModal();">Don't have an account? Create one</p>
+                <button class="btn-secondary" onclick="hideLoginModal()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Registration Modal -->
+        <div id="registerModal" class="modal-overlay auth-modal">
+            <div class="modal">
+                <h2>Create Account</h2>
+                <p id="registerPrompt">Create an account to save your progress and continue from where you left off!</p>
+                <input type="hidden" id="registerFromDeath" value="">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="registerUsername" class="form-input" placeholder="Choose a username" maxlength="12">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="registerEmail" class="form-input" placeholder="email@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="registerPassword" class="form-input" placeholder="At least 6 characters">
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" id="registerConfirmPassword" class="form-input" placeholder="Confirm password" onkeypress="if(event.key==='Enter')registerWithPassword()">
+                </div>
+                <p id="registerError" class="error-msg" style="display: none;"></p>
+                <button id="registerBtn" class="btn-primary" onclick="registerWithPassword()">Create Account</button>
+                <p class="link-text" onclick="hideRegisterModal(); showLoginModal();">Already have an account? Login</p>
+                <button class="btn-secondary" id="registerCancelBtn" onclick="hideRegisterModal(); handleRegisterCancel();">No thanks, restart game</button>
+            </div>
+        </div>
+
+        <!-- Email Verification Modal -->
+        <div id="verifyModal" class="modal-overlay auth-modal">
+            <div class="modal">
+                <h2>Verify Email</h2>
+                <p>Enter the 6-digit code sent to your email</p>
+                <input type="hidden" id="verifyEmail" value="">
+                <div class="form-group">
+                    <label>Verification Code</label>
+                    <input type="text" id="verifyCode" class="form-input verify-code-input" placeholder="000000" maxlength="6" onkeypress="if(event.key==='Enter')verifyEmailCode()">
+                </div>
+                <p id="verifyError" class="error-msg" style="display: none;"></p>
+                <button id="verifyBtn" class="btn-primary" onclick="verifyEmailCode()">Verify</button>
+                <p class="link-text" onclick="resendVerificationCode()">Didn't receive code? Resend</p>
+                <button class="btn-secondary" onclick="hideVerifyModal()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Profile Modal -->
+        <div id="profileModal" class="modal-overlay auth-modal">
+            <div class="modal">
+                <div class="profile-header">
+                    <div class="profile-avatar">👤</div>
+                    <div class="profile-info">
+                        <div class="username" id="profileUsername">Player</div>
+                        <div class="email" id="profileEmail">email@example.com</div>
+                    </div>
+                </div>
+                <div class="token-balance">
+                    <div class="label">TOKENS</div>
+                    <div class="value" id="profileTokens">0</div>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="label">GAMES</div>
+                        <div class="value" id="statGames">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">BEST SCORE</div>
+                        <div class="value" id="statBestScore">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">BEST LEVEL</div>
+                        <div class="value" id="statBestLevel">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">VICTORIES</div>
+                        <div class="value" id="statVictories">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">PLAYTIME</div>
+                        <div class="value" id="statPlaytime">0m</div>
+                    </div>
+                </div>
+                <div class="history-section">
+                    <h4>Recent Games</h4>
+                    <div id="profileHistory"></div>
+                </div>
+                <button class="btn-secondary" onclick="logout()">Logout</button>
+                <button class="btn-secondary" onclick="hideProfileModal()">Close</button>
+            </div>
+        </div>
+
         <div id="gameOverScreen" class="hidden">
             <h2>Game Over</h2>
             <h1>Score: <span id="finalScore">0</span></h1>
@@ -2340,6 +2509,9 @@
 
         // Initialize leaderboard on page load
         document.addEventListener('DOMContentLoaded', async () => {
+            // Load auth state first
+            loadAuthState();
+
             // Check for login token in URL first
             await handleLoginToken();
 
@@ -2416,6 +2588,456 @@
             } catch (e) {}
             currentContinueKey = null;
             playerHasKey = false;
+        }
+
+        // === AUTHENTICATION & TOKEN SYSTEM ===
+        let isAuthenticated = false;
+        let currentPlayer = null;  // { id, username, email, tokens, savedLevel, savedScore, savedDifficulty, continuesThisLevel }
+        const FREE_CONTINUES = 3;  // Free continues for unauthenticated players
+        let freeUsedContinues = 0; // Track free continues used (unauthenticated)
+
+        // Load auth state from sessionStorage
+        function loadAuthState() {
+            try {
+                const token = sessionStorage.getItem('authToken');
+                const player = sessionStorage.getItem('currentPlayer');
+                if (token && player) {
+                    sessionToken = token;
+                    currentPlayer = JSON.parse(player);
+                    isAuthenticated = true;
+                    updateAuthUI();
+                    return true;
+                }
+            } catch (e) {
+                console.error('Error loading auth state:', e);
+            }
+            return false;
+        }
+
+        // Save auth state to sessionStorage
+        function saveAuthState(token, player) {
+            try {
+                sessionStorage.setItem('authToken', token);
+                sessionStorage.setItem('currentPlayer', JSON.stringify(player));
+                sessionToken = token;
+                currentPlayer = player;
+                isAuthenticated = true;
+                updateAuthUI();
+            } catch (e) {
+                console.error('Error saving auth state:', e);
+            }
+        }
+
+        // Clear auth state
+        function clearAuthState() {
+            try {
+                sessionStorage.removeItem('authToken');
+                sessionStorage.removeItem('currentPlayer');
+            } catch (e) {}
+            sessionToken = null;
+            currentPlayer = null;
+            isAuthenticated = false;
+            updateAuthUI();
+        }
+
+        // Update UI based on auth state
+        function updateAuthUI() {
+            const loginBtn = document.getElementById('loginBtn');
+            const profileBtn = document.getElementById('profileBtn');
+            const tokenDisplay = document.getElementById('tokenDisplay');
+            const continueGameBtn = document.getElementById('continueGameBtn');
+
+            if (isAuthenticated && currentPlayer) {
+                if (loginBtn) loginBtn.style.display = 'none';
+                if (profileBtn) {
+                    profileBtn.style.display = 'inline-block';
+                    profileBtn.textContent = currentPlayer.username;
+                }
+                if (tokenDisplay) {
+                    tokenDisplay.style.display = 'flex';
+                    document.getElementById('tokenCount').textContent = currentPlayer.tokens || 0;
+                }
+                if (continueGameBtn && currentPlayer.savedLevel > 1) {
+                    continueGameBtn.style.display = 'block';
+                }
+            } else {
+                if (loginBtn) loginBtn.style.display = 'inline-block';
+                if (profileBtn) profileBtn.style.display = 'none';
+                if (tokenDisplay) tokenDisplay.style.display = 'none';
+                if (continueGameBtn) continueGameBtn.style.display = 'none';
+            }
+        }
+
+        // Show login modal
+        function showLoginModal() {
+            document.getElementById('loginModal').classList.add('show');
+            document.getElementById('loginError').style.display = 'none';
+        }
+
+        function hideLoginModal() {
+            document.getElementById('loginModal').classList.remove('show');
+        }
+
+        // Show registration modal
+        function showRegisterModal(fromDeath = false) {
+            document.getElementById('registerModal').classList.add('show');
+            document.getElementById('registerError').style.display = 'none';
+            document.getElementById('registerFromDeath').value = fromDeath ? '1' : '';
+            if (myPlayerName) {
+                document.getElementById('registerUsername').value = myPlayerName;
+            }
+        }
+
+        function hideRegisterModal() {
+            document.getElementById('registerModal').classList.remove('show');
+        }
+
+        // Show verification modal
+        function showVerifyModal(email) {
+            document.getElementById('verifyModal').classList.add('show');
+            document.getElementById('verifyEmail').value = email;
+            document.getElementById('verifyError').style.display = 'none';
+        }
+
+        function hideVerifyModal() {
+            document.getElementById('verifyModal').classList.remove('show');
+        }
+
+        // Show profile modal
+        function showProfileModal() {
+            document.getElementById('profileModal').classList.add('show');
+            loadProfileData();
+        }
+
+        function hideProfileModal() {
+            document.getElementById('profileModal').classList.remove('show');
+        }
+
+        // Login with password
+        async function loginWithPassword() {
+            const emailOrUsername = document.getElementById('loginEmailOrUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+
+            if (!emailOrUsername || !password) {
+                showLoginError('Please enter email/username and password');
+                return;
+            }
+
+            document.getElementById('loginBtn2').disabled = true;
+            document.getElementById('loginBtn2').textContent = 'Logging in...';
+
+            try {
+                const response = await authFetch(`${API_BASE}/api/auth/login-password`, {
+                    method: 'POST',
+                    body: JSON.stringify({ emailOrUsername, password })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    saveAuthState(data.token, {
+                        id: data.playerId,
+                        username: data.username,
+                        email: data.email,
+                        tokens: data.tokens,
+                        savedLevel: data.savedLevel || 1,
+                        savedScore: data.savedScore || 0,
+                        savedDifficulty: data.savedDifficulty || 'EASY',
+                        continuesThisLevel: data.continuesThisLevel || 0
+                    });
+                    hideLoginModal();
+                    showNotification(`Welcome back, ${data.username}!`);
+                } else {
+                    if (data.needsVerification) {
+                        hideLoginModal();
+                        showVerifyModal(emailOrUsername);
+                    } else {
+                        showLoginError(data.error || 'Login failed');
+                    }
+                }
+            } catch (e) {
+                showLoginError('Network error. Please try again.');
+                console.error('Login error:', e);
+            }
+
+            document.getElementById('loginBtn2').disabled = false;
+            document.getElementById('loginBtn2').textContent = 'Login';
+        }
+
+        function showLoginError(msg) {
+            document.getElementById('loginError').textContent = msg;
+            document.getElementById('loginError').style.display = 'block';
+        }
+
+        // Register with password
+        async function registerWithPassword() {
+            const username = document.getElementById('registerUsername').value.trim();
+            const email = document.getElementById('registerEmail').value.trim();
+            const password = document.getElementById('registerPassword').value;
+            const confirmPassword = document.getElementById('registerConfirmPassword').value;
+            const fromDeath = document.getElementById('registerFromDeath').value === '1';
+
+            if (!username || !email || !password) {
+                showRegisterError('Please fill in all fields');
+                return;
+            }
+            if (password !== confirmPassword) {
+                showRegisterError('Passwords do not match');
+                return;
+            }
+            if (password.length < 6) {
+                showRegisterError('Password must be at least 6 characters');
+                return;
+            }
+
+            document.getElementById('registerBtn').disabled = true;
+            document.getElementById('registerBtn').textContent = 'Creating account...';
+
+            try {
+                const response = await authFetch(`${API_BASE}/api/auth/register-password`, {
+                    method: 'POST',
+                    body: JSON.stringify({ username, email, password })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    hideRegisterModal();
+                    showVerifyModal(email);
+                    // Store that we came from death for post-verification
+                    sessionStorage.setItem('registerFromDeath', fromDeath ? '1' : '');
+                } else {
+                    showRegisterError(data.error || 'Registration failed');
+                }
+            } catch (e) {
+                showRegisterError('Network error. Please try again.');
+                console.error('Register error:', e);
+            }
+
+            document.getElementById('registerBtn').disabled = false;
+            document.getElementById('registerBtn').textContent = 'Create Account';
+        }
+
+        function showRegisterError(msg) {
+            document.getElementById('registerError').textContent = msg;
+            document.getElementById('registerError').style.display = 'block';
+        }
+
+        // Verify email with code
+        async function verifyEmailCode() {
+            const email = document.getElementById('verifyEmail').value.trim();
+            const code = document.getElementById('verifyCode').value.trim();
+
+            if (!code || code.length !== 6) {
+                showVerifyError('Please enter the 6-digit code');
+                return;
+            }
+
+            document.getElementById('verifyBtn').disabled = true;
+            document.getElementById('verifyBtn').textContent = 'Verifying...';
+
+            try {
+                const response = await authFetch(`${API_BASE}/api/auth/verify-code`, {
+                    method: 'POST',
+                    body: JSON.stringify({ email, code })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    saveAuthState(data.token, {
+                        id: data.playerId,
+                        username: data.username,
+                        email: data.email,
+                        tokens: data.tokens,
+                        savedLevel: 1,
+                        savedScore: 0,
+                        savedDifficulty: 'EASY',
+                        continuesThisLevel: 0
+                    });
+                    hideVerifyModal();
+                    showNotification(`Welcome, ${data.username}! You have ${data.tokens} tokens.`);
+
+                    // If registered from death, continue game
+                    const fromDeath = sessionStorage.getItem('registerFromDeath') === '1';
+                    sessionStorage.removeItem('registerFromDeath');
+                    if (fromDeath) {
+                        freeUsedContinues = 0; // Reset free continues
+                        respawnPlayer();
+                    }
+                } else {
+                    showVerifyError(data.error || 'Verification failed');
+                }
+            } catch (e) {
+                showVerifyError('Network error. Please try again.');
+                console.error('Verify error:', e);
+            }
+
+            document.getElementById('verifyBtn').disabled = false;
+            document.getElementById('verifyBtn').textContent = 'Verify';
+        }
+
+        function showVerifyError(msg) {
+            document.getElementById('verifyError').textContent = msg;
+            document.getElementById('verifyError').style.display = 'block';
+        }
+
+        // Resend verification code
+        async function resendVerificationCode() {
+            const email = document.getElementById('verifyEmail').value.trim();
+            if (!email) return;
+
+            try {
+                const response = await authFetch(`${API_BASE}/api/auth/resend-code`, {
+                    method: 'POST',
+                    body: JSON.stringify({ email })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('verifyError').textContent = 'New code sent!';
+                    document.getElementById('verifyError').style.display = 'block';
+                    document.getElementById('verifyError').style.color = '#4ade80';
+                } else {
+                    showVerifyError(data.error || 'Failed to resend code');
+                }
+            } catch (e) {
+                showVerifyError('Network error');
+            }
+        }
+
+        // Logout
+        async function logout() {
+            try {
+                await authFetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
+            } catch (e) {}
+            clearAuthState();
+            hideProfileModal();
+            showNotification('Logged out');
+        }
+
+        // Use token for continue
+        async function useTokenForContinue() {
+            if (!isAuthenticated || !currentPlayer) return false;
+            if (currentPlayer.tokens <= 0) return false;
+
+            try {
+                const response = await authFetch(`${API_BASE}/api/player/use-token`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    currentPlayer.tokens = data.tokens;
+                    currentPlayer.continuesThisLevel = data.continuesThisLevel;
+                    sessionStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
+                    updateAuthUI();
+                    return true;
+                }
+            } catch (e) {
+                console.error('Error using token:', e);
+            }
+            return false;
+        }
+
+        // Save progress on level advance
+        async function saveGameProgress() {
+            if (!isAuthenticated) return;
+
+            try {
+                const response = await authFetch(`${API_BASE}/api/player/save-game-progress`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        level: level,
+                        score: score,
+                        difficulty: selectedDifficulty.toUpperCase()
+                    })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    currentPlayer.savedLevel = data.savedLevel;
+                    currentPlayer.savedScore = data.savedScore;
+                    currentPlayer.savedDifficulty = data.savedDifficulty;
+                    currentPlayer.tokens = data.tokens;
+                    currentPlayer.continuesThisLevel = 0;
+                    sessionStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
+                }
+            } catch (e) {
+                console.error('Error saving progress:', e);
+            }
+        }
+
+        // Reset level continues (when restarting at level beginning)
+        async function resetLevelContinues() {
+            if (!isAuthenticated) return;
+
+            try {
+                const response = await authFetch(`${API_BASE}/api/player/reset-level-continues`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    currentPlayer.continuesThisLevel = 0;
+                    sessionStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
+                }
+            } catch (e) {
+                console.error('Error resetting continues:', e);
+            }
+        }
+
+        // Load profile data
+        async function loadProfileData() {
+            if (!isAuthenticated) return;
+
+            try {
+                const response = await authFetch(`${API_BASE}/api/player/profile`);
+                const data = await response.json();
+
+                if (data.player) {
+                    // Update local state
+                    currentPlayer.tokens = data.player.tokens;
+                    sessionStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
+
+                    // Update profile display
+                    document.getElementById('profileUsername').textContent = data.player.username;
+                    document.getElementById('profileEmail').textContent = data.player.email;
+                    document.getElementById('profileTokens').textContent = data.player.tokens;
+                    document.getElementById('tokenCount').textContent = data.player.tokens;
+
+                    // Stats
+                    document.getElementById('statGames').textContent = data.stats.total_games || 0;
+                    document.getElementById('statBestScore').textContent = (data.stats.best_score || 0).toLocaleString();
+                    document.getElementById('statBestLevel').textContent = data.stats.best_level || 0;
+                    document.getElementById('statVictories').textContent = data.stats.victories || 0;
+                    document.getElementById('statPlaytime').textContent = formatPlaytime(data.stats.total_playtime || 0);
+
+                    // Game history
+                    const historyEl = document.getElementById('profileHistory');
+                    historyEl.innerHTML = '';
+                    if (data.games && data.games.length > 0) {
+                        data.games.slice(0, 10).forEach(game => {
+                            const div = document.createElement('div');
+                            div.className = 'history-item';
+                            div.innerHTML = `
+                                <span>Level ${game.level}</span>
+                                <span>${(game.score || 0).toLocaleString()}</span>
+                                <span>${game.difficulty || 'EASY'}</span>
+                                <span>${game.is_victory ? '🏆' : ''}</span>
+                            `;
+                            historyEl.appendChild(div);
+                        });
+                    } else {
+                        historyEl.innerHTML = '<p style="color: #888;">No games yet</p>';
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading profile:', e);
+            }
+        }
+
+        function formatPlaytime(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+            return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
         }
 
         // === LEVEL SPEED MULTIPLIERS ===
@@ -4092,39 +4714,185 @@
 
         // === RESPAWN MODAL FUNCTIONS ===
         function showRespawnModal() {
-            // Check if player has a stored continue key - auto-continue if possible
-            if (playerHasKey && currentContinueKey) {
-                // Auto-continue using stored key
-                autoContinueWithKey();
-                return;
-            }
-
             // Update display
             document.getElementById('respawnLevel').textContent = level;
             document.getElementById('respawnScore').textContent = score.toLocaleString();
 
-            // Update lives indicators - show continues used
-            const livesContainer = document.getElementById('respawnLives');
-            let livesHtml = '';
-            for (let i = 0; i < MAX_CONTINUES_PER_LEVEL; i++) {
-                const used = i < continuesUsedThisLevel;
-                livesHtml += `<div class="life ${used ? 'used' : ''}"></div>`;
-            }
-            livesContainer.innerHTML = livesHtml;
-
-            const remaining = MAX_CONTINUES_PER_LEVEL - continuesUsedThisLevel;
-            document.getElementById('respawnsRemaining').textContent = remaining;
-
-            // If player has no key, they must get one from email
+            // Hide all sections first
             document.getElementById('freeRespawnSection').style.display = 'none';
-            document.getElementById('emailSection').style.display = 'block';
+            document.getElementById('emailSection').style.display = 'none';
             document.getElementById('keyReceivedSection').style.display = 'none';
             document.getElementById('returningPlayerSection').style.display = 'none';
-            document.getElementById('emailError').style.display = 'none';
+            document.getElementById('tokenRespawnSection')?.remove(); // Remove if exists
 
-            document.getElementById('respawnMessage').textContent = 'Enter your email to receive a continue key';
+            if (isAuthenticated && currentPlayer) {
+                // === AUTHENTICATED PLAYER FLOW ===
+                const continuesThisLevel = currentPlayer.continuesThisLevel || 0;
+                const tokens = currentPlayer.tokens || 0;
+
+                // Update lives indicators - show continues used
+                const livesContainer = document.getElementById('respawnLives');
+                let livesHtml = '';
+                for (let i = 0; i < MAX_CONTINUES_PER_LEVEL; i++) {
+                    const used = i < continuesThisLevel;
+                    livesHtml += `<div class="life ${used ? 'used' : ''}"></div>`;
+                }
+                livesContainer.innerHTML = livesHtml;
+
+                // Create token respawn section
+                const tokenSection = document.createElement('div');
+                tokenSection.id = 'tokenRespawnSection';
+                tokenSection.style.marginTop = '15px';
+
+                if (tokens <= 0) {
+                    // No tokens left
+                    document.getElementById('respawnMessage').textContent = 'Out of tokens!';
+                    tokenSection.innerHTML = `
+                        <p class="respawn-info" style="color: #ff6b6b;">You have no tokens remaining.</p>
+                        <button class="btn-respawn" onclick="hideRespawnModal(); gameOver();">Game Over</button>
+                    `;
+                } else if (continuesThisLevel >= MAX_CONTINUES_PER_LEVEL) {
+                    // Max continues used on this level - restart at level beginning
+                    document.getElementById('respawnMessage').textContent = 'Max continues reached for this level';
+                    tokenSection.innerHTML = `
+                        <p class="respawn-info">You've used ${MAX_CONTINUES_PER_LEVEL} continues on this level.</p>
+                        <p class="respawn-info" style="color: #4ade80;">You have <strong>${tokens}</strong> tokens</p>
+                        <button class="btn-respawn" onclick="restartLevelWithToken()">Restart Level (1 token)</button>
+                    `;
+                } else {
+                    // Can continue at current position
+                    const remaining = MAX_CONTINUES_PER_LEVEL - continuesThisLevel;
+                    document.getElementById('respawnMessage').textContent = `${remaining} continues left for this level`;
+                    tokenSection.innerHTML = `
+                        <p class="respawn-info" style="color: #4ade80;">You have <strong>${tokens}</strong> tokens</p>
+                        <button class="btn-respawn" onclick="continueWithToken()">Continue (1 token)</button>
+                    `;
+                }
+
+                // Insert token section after respawn message
+                document.getElementById('respawnMessage').after(tokenSection);
+            } else {
+                // === UNAUTHENTICATED PLAYER FLOW ===
+                const remaining = FREE_CONTINUES - freeUsedContinues;
+
+                // Update lives indicators
+                const livesContainer = document.getElementById('respawnLives');
+                let livesHtml = '';
+                for (let i = 0; i < FREE_CONTINUES; i++) {
+                    const used = i < freeUsedContinues;
+                    livesHtml += `<div class="life ${used ? 'used' : ''}"></div>`;
+                }
+                livesContainer.innerHTML = livesHtml;
+
+                if (freeUsedContinues >= FREE_CONTINUES) {
+                    // Used all free continues - prompt for registration
+                    document.getElementById('respawnMessage').textContent = 'Create an account to continue!';
+                    hideRespawnModal();
+                    showRegisterModal(true); // true = from death
+                    return;
+                } else {
+                    // Has free continues remaining
+                    document.getElementById('respawnMessage').textContent = `${remaining} free continues remaining`;
+                    document.getElementById('respawnsRemaining').textContent = remaining;
+                    document.getElementById('freeRespawnSection').style.display = 'block';
+                }
+            }
 
             document.getElementById('respawnModal').classList.add('show');
+        }
+
+        // Continue with token (respawn at current position)
+        async function continueWithToken() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'Using token...';
+
+            const success = await useTokenForContinue();
+            if (success) {
+                hideRespawnModal();
+                respawnPlayer();
+                showNotification(`Token used! ${currentPlayer.tokens} remaining`);
+            } else {
+                showNotification('Failed to use token');
+                btn.disabled = false;
+                btn.textContent = 'Continue (1 token)';
+            }
+        }
+
+        // Restart level with token (after 3 continues)
+        async function restartLevelWithToken() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'Using token...';
+
+            const success = await useTokenForContinue();
+            if (success) {
+                // Reset continues for fresh start
+                await resetLevelContinues();
+                hideRespawnModal();
+                restartAtLevelBeginning();
+                showNotification(`Restarting Level ${level}. ${currentPlayer.tokens} tokens remaining`);
+            } else {
+                showNotification('Failed to use token');
+                btn.disabled = false;
+                btn.textContent = 'Restart Level (1 token)';
+            }
+        }
+
+        // Handle free respawn for unauthenticated users
+        function doFreeRespawn() {
+            freeUsedContinues++;
+            hideRespawnModal();
+            respawnPlayer();
+            const remaining = FREE_CONTINUES - freeUsedContinues;
+            if (remaining > 0) {
+                showNotification(`${remaining} free continues left`);
+            }
+        }
+
+        // Handle registration cancel (user chose not to create account)
+        function handleRegisterCancel() {
+            // Reset free continues and restart game from Level 1
+            freeUsedContinues = 0;
+            resetGame();
+            showNotification('Game restarted from Level 1');
+        }
+
+        // Continue saved game (for authenticated users from home screen)
+        function continueSavedGame() {
+            if (!isAuthenticated || !currentPlayer) {
+                showLoginModal();
+                return;
+            }
+
+            if (currentPlayer.savedLevel <= 1) {
+                showNotification('No saved game found');
+                return;
+            }
+
+            // Set up game with saved progress
+            myPlayerName = currentPlayer.username;
+            selectedDifficulty = (currentPlayer.savedDifficulty || 'EASY').toLowerCase();
+            level = currentPlayer.savedLevel || 1;
+            score = currentPlayer.savedScore || 0;
+            continuesUsedThisLevel = currentPlayer.continuesThisLevel || 0;
+            savedLevelScore = score;
+
+            // Start the game
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('lobbySidebar').style.display = 'none';
+            initGame();
+            showNotification(`Continuing from Level ${level}`);
+        }
+
+        // Reset game to Level 1
+        function resetGame() {
+            level = 1;
+            score = 0;
+            savedLevelScore = 0;
+            continuesUsedThisLevel = 0;
+            freeUsedContinues = 0;
+            backToMenu();
         }
 
         function hideRespawnModal() {
@@ -5832,8 +6600,13 @@
                 if (level > 6) level = 6;
                 document.getElementById('levelDisplay').textContent = level <= 5 ? 'Level ' + level : 'FINAL LEVEL';
 
-                // Reset respawns for new level
+                // Reset respawns/continues for new level
                 respawnsUsedThisLevel = 0;
+                continuesUsedThisLevel = 0;
+                savedLevelScore = score;
+
+                // Save progress for authenticated users
+                saveGameProgress();
 
                 // Report level up action
                 reportAction('level_up', { newLevel: level });
@@ -7521,6 +8294,7 @@
                     killsThisLevel = 0; // Reset kills for new level
                     continuesUsedThisLevel = 0; // Reset continues for new level
                     savedLevelScore = score; // Save score at level start
+                    saveGameProgress(); // Save progress for authenticated users
                     document.getElementById('levelDisplay').textContent = level <= 5 ? 'Level ' + level : 'FINAL LEVEL';
                     playLevelUp();
                     createExplosion(logicalWidth / 2, logicalHeight / 2, '#ffd700', 40);
