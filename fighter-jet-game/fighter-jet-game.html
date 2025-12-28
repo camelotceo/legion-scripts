@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Legion's Space Fight</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -4453,6 +4454,7 @@
             lightningFlashAlpha = 0;
             boss = null;
             bossActive = false;
+            bossDefeating = false;
             bossTauntTimer = 0;
             bossLowHealthReported = false;
             stopBossMusic();
@@ -4697,6 +4699,7 @@
             // Reset boss state
             boss = null;
             bossActive = false;
+            bossDefeating = false;
             bossDefeated = [];
             bossTauntTimer = 0;
             bossLowHealthReported = false;
@@ -4714,11 +4717,13 @@
             // Update UI
             document.getElementById('score').textContent = score;
             document.getElementById('levelDisplay').textContent = 'Level 1';
-            document.getElementById('livesDisplay').textContent = '❤️'.repeat(lives);
+            document.getElementById('lives').textContent = lives;
 
             // Ensure game is running
             gameRunning = true;
             gamePaused = false;
+            lastFrameTime = performance.now();
+            startBackgroundMusic(false);
 
             showNotification('Starting new game from Level 1');
         }
@@ -5612,6 +5617,9 @@
             const bossData = BOSSES[levelNum];
             if (!bossData) return;
 
+            // Reset boss defeating flag
+            bossDefeating = false;
+
             // Clear enemies and mines but keep powerups/weapons
             enemies = [];
             mines = [];
@@ -6399,8 +6407,11 @@
             }
         }
 
+        let bossDefeating = false; // Flag to prevent multiple defeatBoss calls
+
         function defeatBoss() {
-            if (!boss) return;
+            if (!boss || bossDefeating) return;
+            bossDefeating = true; // Prevent re-entry during animation
 
             // Capture boss reference before it gets nulled
             const defeatedBoss = {
@@ -6485,6 +6496,7 @@
 
                 // Play victory, resume normal music
                 playBossDefeat();
+                bossDefeating = false; // Reset flag after defeat complete
                 setTimeout(() => {
                     if (gameRunning && !bossActive) startBackgroundMusic(shieldActive);
                 }, 1500);
@@ -8991,6 +9003,7 @@
             // Reset boss state
             boss = null;
             bossActive = false;
+            bossDefeating = false;
             bossDefeated = [];
             bossTauntTimer = 0;
             bossLowHealthReported = false;
