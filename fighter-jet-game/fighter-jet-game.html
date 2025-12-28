@@ -1694,8 +1694,11 @@
                     const data = await response.json();
                     livePlayers = data.players || [];
                     renderLivePlayers();
+                } else if (response.status === 404) {
+                    // Player session expired in Redis, rejoin silently
+                    await joinAsPlayer();
                 }
-            } catch (e) { console.error('Failed to update player status:', e); }
+            } catch (e) { /* Silently ignore network errors */ }
         }
 
         async function reportAction(action, details = null) {
@@ -4854,8 +4857,22 @@
         function handleRegisterCancel() {
             // Reset free continues and restart game from Level 1
             freeUsedContinues = 0;
-            resetGame();
-            showNotification('Game restarted from Level 1');
+
+            // Reset game state to level 1
+            level = 1;
+            score = 0;
+            savedLevelScore = 0;
+            continuesUsedThisLevel = 0;
+            killsThisLevel = 0;
+            bossDefeated = [];
+
+            // Update UI
+            document.getElementById('score').textContent = score;
+            document.getElementById('levelDisplay').textContent = 'Level 1';
+
+            // Respawn player and continue game
+            respawnPlayer();
+            showNotification('Restarting from Level 1');
         }
 
         // Continue saved game (for authenticated users from home screen)
