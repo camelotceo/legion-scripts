@@ -1199,7 +1199,7 @@
                     method: 'POST',
                     body: JSON.stringify({
                         difficulty: selectedDifficulty.toUpperCase(),
-                        mode: isMultiplayer ? (coopMode ? 'coop' : 'versus') : 'single',
+                        mode: isMultiplayer ? selectedGameMode : 'single',
                         roomCode: currentRoomCode || null
                     })
                 });
@@ -3779,6 +3779,8 @@
             versusState.matchOver = true;
             gameRunning = false;
             stopPositionSync();
+            stopBackgroundMusic();
+            stopBossMusic();
 
             const isWinner = winnerId === myPlayerId;
 
@@ -3877,12 +3879,13 @@
                     }
                     break;
                 case 'round_end':
-                    // Sync round end
-                    if (data.winnerId === myPlayerId) {
-                        versusState.myRoundWins++;
-                    } else {
-                        versusState.opponentRoundWins++;
-                    }
+                    // Round end sync - only process if we haven't already handled it locally
+                    // The winner calls handleVersusRoundWin (increments myRoundWins)
+                    // The loser calls handleVersusRoundLoss (increments opponentRoundWins)
+                    // So we only need to sync for the winner when they receive the loser's broadcast
+                    // But since winner already incremented their own wins, we skip duplicate counting
+                    // This event is mainly for logging/debugging
+                    console.log('Round end received:', data.winnerId === myPlayerId ? 'I won' : 'Opponent won');
                     break;
                 case 'match_end':
                     if (!versusState.matchOver) {
@@ -8328,11 +8331,15 @@
             }
 
             await startGameSession();
-            document.getElementById('onlinePlayersBar').classList.add('show');
-            document.getElementById('chatBar').classList.add('show');
-            startPlayerPolling();
-            startPlayerCommentPolling();
-            updatePlayerStatus('playing');
+            // Show online players bar and chat for single player only
+            // Multiplayer has its own UI and doesn't use the spectate system
+            if (!isMultiplayer) {
+                document.getElementById('onlinePlayersBar').classList.add('show');
+                document.getElementById('chatBar').classList.add('show');
+                startPlayerPolling();
+                startPlayerCommentPolling();
+                updatePlayerStatus('playing');
+            }
             reportAction('started_game');
         }
 
