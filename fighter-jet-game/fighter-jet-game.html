@@ -1005,6 +1005,17 @@
             </div>
         </div>
 
+        <!-- Username Taken Modal -->
+        <div id="usernameTakenModal" class="modal-overlay auth-modal">
+            <div class="modal">
+                <h2>Username Taken</h2>
+                <p>The username "<span id="takenUsername"></span>" is already in use.</p>
+                <p style="margin-top: 10px; color: #aaa;">If this is your account, you can login. Otherwise, please choose a different name.</p>
+                <button class="btn-primary" onclick="hideUsernameTakenModal(); showLoginModal();">Login to My Account</button>
+                <button class="btn-secondary" onclick="hideUsernameTakenModal();">Choose Different Name</button>
+            </div>
+        </div>
+
         <!-- Login Modal -->
         <div id="loginModal" class="modal-overlay auth-modal">
             <div class="modal">
@@ -1585,16 +1596,11 @@
                             console.log('Registered as:', myPlayerName, 'ID:', myPlayerId);
                         }
                     } else if (regResponse.status === 409) {
-                        // Username taken - show error and stop
+                        // Username taken - show modal
                         const data = await regResponse.json();
                         console.warn('Username taken:', data.error);
-                        showNotification('Username "' + nameToUse + '" is taken. Try another name.');
-                        if (data.suggestion && nameInput) {
-                            nameInput.value = data.suggestion;
-                            nameInput.focus();
-                            nameInput.select();
-                        }
-                        return false; // Don't continue - user must pick new name
+                        showUsernameTakenModal(nameToUse);
+                        return false; // Don't continue - user must login or pick new name
                     }
                 }
             } catch (e) {
@@ -2502,6 +2508,17 @@
 
         function hideLoginModal() {
             document.getElementById('loginModal').classList.remove('show');
+        }
+
+        // Username taken modal
+        function showUsernameTakenModal(username) {
+            document.getElementById('takenUsername').textContent = username;
+            document.getElementById('loginEmailOrUsername').value = username; // Pre-fill login
+            document.getElementById('usernameTakenModal').classList.add('show');
+        }
+
+        function hideUsernameTakenModal() {
+            document.getElementById('usernameTakenModal').classList.remove('show');
         }
 
         // Show registration modal
@@ -8986,6 +9003,15 @@
 
         async function startGame() {
             if (audioContext.state === 'suspended') await audioContext.resume();
+
+            // Check username availability BEFORE starting the game
+            await leaveAsPlayer(); // Leave any old session first
+            const joined = await joinAsPlayer();
+            if (!joined) {
+                // Username taken or other error - modal already shown, don't start game
+                return;
+            }
+
             closeSetupModal();
             document.getElementById('startScreen').classList.add('hidden');
             document.getElementById('gameOverScreen').classList.add('hidden');
@@ -9065,18 +9091,6 @@
             if (isMobile) {
                 document.getElementById('touchControls').classList.add('show');
             }
-            // Leave old session first (in case of Play Again), then join as new player
-            await leaveAsPlayer();
-            const joined = await joinAsPlayer();
-
-            // If join failed (e.g., username taken), stop game and go back to start screen
-            if (!joined) {
-                gameRunning = false;
-                document.getElementById('startScreen').classList.remove('hidden');
-                stopBackgroundMusic();
-                return;
-            }
-
             // Start server-side game session for score validation
             await startServerGameSession();
 
