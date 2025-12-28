@@ -1529,12 +1529,27 @@
             const nameInput = document.getElementById('playerNameInput');
             // Use entered name, or fall back to saved name
             const enteredName = nameInput ? nameInput.value.trim() : '';
-            const nameToUse = enteredName || localStorage.getItem('playerName') || '';
+            const savedName = localStorage.getItem('playerName') || '';
+            const nameToUse = enteredName || savedName;
+
+            // If user entered a different name than saved, clear old session
+            if (enteredName && enteredName !== savedName) {
+                console.log('New name entered, clearing old session');
+                sessionToken = null;
+                localStorage.removeItem('sessionToken');
+                myPlayerId = null;
+                myPlayerName = '';
+                // Also clear auth state
+                isAuthenticated = false;
+                currentPlayer = null;
+                sessionStorage.removeItem('authToken');
+                sessionStorage.removeItem('currentPlayer');
+            }
 
             // Try to authenticate/register with new auth system
             try {
-                // First try to login with existing token
-                if (sessionToken) {
+                // First try to login with existing token (only if name matches)
+                if (sessionToken && (!enteredName || enteredName === savedName)) {
                     const loginResponse = await authFetch(`${API_BASE}/api/auth/login`, {
                         method: 'POST',
                         body: JSON.stringify({ token: sessionToken })
