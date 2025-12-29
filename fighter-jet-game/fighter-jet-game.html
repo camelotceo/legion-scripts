@@ -3203,7 +3203,10 @@
 
         // Room Functions
         async function createRoom() {
-            const playerName = document.getElementById('mpPlayerNameInput').value.trim() || 'Player';
+            let playerName = document.getElementById('mpPlayerNameInput').value.trim();
+            if (!playerName) {
+                playerName = 'Guest' + Math.floor(Math.random() * 10000);
+            }
 
             // Ensure player is registered first
             const registered = await ensurePlayerRegistered(playerName);
@@ -3247,7 +3250,10 @@
                 return;
             }
 
-            const playerName = document.getElementById('mpPlayerNameInput').value.trim() || 'Player';
+            let playerName = document.getElementById('mpPlayerNameInput').value.trim();
+            if (!playerName) {
+                playerName = 'Guest' + Math.floor(Math.random() * 10000);
+            }
 
             // Ensure player is registered first
             const registered = await ensurePlayerRegistered(playerName);
@@ -3470,7 +3476,12 @@
 
         // Matchmaking
         async function quickMatch() {
-            const playerName = document.getElementById('mpPlayerNameInput').value.trim() || 'Player';
+            let playerName = document.getElementById('mpPlayerNameInput').value.trim();
+
+            // Generate random guest name if none provided
+            if (!playerName) {
+                playerName = 'Guest' + Math.floor(Math.random() * 10000);
+            }
 
             // Ensure player is registered first
             const registered = await ensurePlayerRegistered(playerName);
