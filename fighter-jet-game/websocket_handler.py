@@ -88,10 +88,9 @@ def register_handlers():
             print(f"player_state: No room code from {player_id}")
             return
 
-        # Debug: log player state broadcasts (throttled)
-        import random
-        if random.random() < 0.01:
-            print(f"player_state: Broadcasting {player_id} position to room {room_code}")
+        # Debug: log player state broadcasts (throttled - 5% of messages)
+        if random.random() < 0.05:
+            print(f"player_state: {player_id} pos ({data.get('x'):.0f}, {data.get('y'):.0f}) -> room {room_code}")
 
         # Broadcast to all other players in the room
         emit('game_update', {
@@ -118,9 +117,14 @@ def register_handlers():
     def handle_player_shoot(data):
         """Player fired a bullet."""
         room_code = data.get('roomCode')
+        player_id = data.get('playerId')
 
         if not room_code:
+            print(f"player_shoot: No room code from {player_id}")
             return
+
+        # Debug: log all shoots
+        print(f"player_shoot: {player_id} at ({data.get('x'):.0f}, {data.get('y'):.0f}) -> room {room_code}")
 
         emit('game_update', {
             'type': 'shoot',

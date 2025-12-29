@@ -3667,6 +3667,10 @@
                     console.log('WebSocket disconnected');
                 });
 
+                mpSocket.on('joined_game', (data) => {
+                    console.log('Successfully joined room:', data.roomCode, 'success:', data.success);
+                });
+
                 mpSocket.on('player_joined', (data) => {
                     console.log('Player joined:', data.playerName);
                 });
@@ -8299,8 +8303,8 @@
 
             updateWeaponDisplay();
 
-            // Broadcast to partner in coop mode
-            if (isMultiplayer && selectedGameMode === 'coop') {
+            // Broadcast to partner/opponent in multiplayer modes
+            if (isMultiplayer && (selectedGameMode === 'coop' || selectedGameMode === 'versus')) {
                 broadcastShoot(player.x, player.y - 25, currentWeapon);
             }
         }
