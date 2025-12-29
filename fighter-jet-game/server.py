@@ -2564,10 +2564,14 @@ def matchmaking_status():
         # Not in queue - check if already matched to a room
         room_code = redis_client.get_player_room(player_id)
         if room_code:
+            # Check if this player is the host
+            room = redis_client.get_room(room_code)
+            is_host = room and room.get('host_id') == player_id
             return jsonify({
                 'matched': True,
                 'room_code': room_code,
-                'inQueue': False
+                'inQueue': False,
+                'isHost': is_host
             })
         return jsonify({'inQueue': False})
 

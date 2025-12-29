@@ -449,7 +449,8 @@ def find_match(player_id: str, mode: str, difficulty: str) -> dict:
             return {
                 'matched': True,
                 'room_code': room_code,
-                'opponent': data
+                'opponent': data,
+                'isHost': False  # The player who finds the match joined the room
             }
 
     return {'matched': False, 'queue_position': get_queue_position(player_id, mode)}

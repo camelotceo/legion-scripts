@@ -3510,7 +3510,7 @@
                 if (data.matched) {
                     // Found a match immediately
                     currentRoomCode = data.room_code;
-                    isRoomHost = false;
+                    isRoomHost = data.isHost || false;
                     isPlayerReady = false;
                     const roomResponse = await fetch(`${API_BASE}/api/rooms/${data.room_code}`);
                     const room = await roomResponse.json();
@@ -3541,7 +3541,7 @@
                     if (data.matched) {
                         clearInterval(matchmakingPollInterval);
                         currentRoomCode = data.room_code;
-                        isRoomHost = false;
+                        isRoomHost = data.isHost || false;
                         const roomResponse = await fetch(`${API_BASE}/api/rooms/${data.room_code}`);
                         const room = await roomResponse.json();
                         showWaitingRoom(room);
