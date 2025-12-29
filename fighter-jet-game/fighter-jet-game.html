@@ -3728,14 +3728,18 @@
             };
             const wp = weaponData[data.weapon] || weaponData.pistol;
 
+            // In versus mode, opponent bullets go DOWN (toward player)
+            // In coop mode, partner bullets go UP (same direction as player)
+            const bulletDirection = (selectedGameMode === 'versus') ? wp.speed : -wp.speed;
+
             bullets.push({
                 x: data.x,
                 y: data.y,
-                dy: -wp.speed,
+                dy: bulletDirection,
                 size: wp.size,
                 color: wp.color,
                 weapon: data.weapon,
-                fromPartner: true,  // Mark as partner's bullet
+                fromPartner: true,  // Mark as partner's/opponent's bullet
                 id: data.bulletId
             });
         }
@@ -3935,11 +3939,11 @@
             if (selectedGameMode === 'versus') {
                 versusState.roundActive = false;
                 versusState.roundStartCountdown = true;
-                // Position players on opposite sides
-                player.x = logicalWidth * 0.25;
-                player.y = logicalHeight / 2;
-                otherPlayer.x = logicalWidth * 0.75;
-                otherPlayer.y = logicalHeight / 2;
+                // Position players for head-to-head: player at bottom, opponent at top
+                player.x = logicalWidth / 2;
+                player.y = logicalHeight - 100;  // Bottom of screen
+                otherPlayer.x = logicalWidth / 2;
+                otherPlayer.y = 100;  // Top of screen
                 otherPlayer.isActive = true;
                 updateVersusHud();
                 startPvPRoundCountdown(() => {
@@ -4126,11 +4130,11 @@
             versusState.opponentInvulnerable = false;
             versusState.roundStartCountdown = true;
 
-            // Position players on opposite sides facing each other
-            player.x = logicalWidth * 0.25;
-            player.y = logicalHeight / 2;
-            otherPlayer.x = logicalWidth * 0.75;
-            otherPlayer.y = logicalHeight / 2;
+            // Position players for head-to-head: player at bottom, opponent at top
+            player.x = logicalWidth / 2;
+            player.y = logicalHeight - 100;  // Bottom of screen
+            otherPlayer.x = logicalWidth / 2;
+            otherPlayer.y = 100;  // Top of screen
             otherPlayer.isActive = true;
 
             // Clear bullets and enemies for fresh round
@@ -7507,6 +7511,11 @@
             ctx.save();
             ctx.translate(otherPlayer.x, otherPlayer.y);
 
+            // In versus mode, rotate opponent to face downward (toward player)
+            if (selectedGameMode === 'versus') {
+                ctx.rotate(Math.PI);  // 180 degree rotation
+            }
+
             // If player is dead/respawning, draw as ghost
             if (!otherPlayer.isActive) {
                 ctx.globalAlpha = 0.3;
@@ -7574,12 +7583,17 @@
                 ctx.fill();
             }
 
-            // Player name label
+            // Player name label (restore rotation for text in versus mode)
             ctx.globalAlpha = 1;
             ctx.fillStyle = colors.body;
             ctx.font = 'bold 10px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(otherPlayer.name, 0, 45);
+            if (selectedGameMode === 'versus') {
+                ctx.rotate(Math.PI);  // Un-rotate for readable text
+                ctx.fillText(otherPlayer.name, 0, -45);  // Adjust position
+            } else {
+                ctx.fillText(otherPlayer.name, 0, 45);
+            }
 
             ctx.restore();
         }
