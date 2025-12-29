@@ -657,10 +657,12 @@
                 <div class="ui-buttons-row">
                     <button id="muteButton" onclick="toggleMute()">🔊</button>
                     <button id="swapButton" onclick="switchWeapon()">SWAP</button>
+                    <button id="shieldButton" onclick="activateShieldCharge()" style="display:none; background: linear-gradient(135deg, #00d4ff, #0066cc);">🛡️ SHIELD</button>
                     <button id="pauseButton" onclick="togglePause()">⏸</button>
                     <button id="quitButton" onclick="quitGame()">QUIT</button>
                 </div>
                 <span id="weaponDisplay">PISTOL [Q]</span>
+                <span id="shieldChargeDisplay" style="display:none; margin-left: 10px; color: #00ffff; font-weight: bold;">🛡 x0</span>
             </div>
             <div class="ui-right">
                 <span>Lives: <span id="lives">3</span></span>
@@ -3727,6 +3729,51 @@
                     handleIncomingHazard(data);
                 });
 
+                // Versus mode synced pickups
+                mpSocket.on('versus_pickup_spawned', (data) => {
+                    console.log('PvP: Received pickup spawn:', data.type, data.category);
+                    versusPickups.push({
+                        id: data.pickupId,
+                        type: data.type,
+                        category: data.category,
+                        x: data.x,
+                        y: data.y,
+                        width: 35,
+                        height: 35,
+                        direction: data.direction,
+                        speed: data.speed,
+                        rotation: 0
+                    });
+                });
+
+                mpSocket.on('versus_pickup_removed', (data) => {
+                    console.log('PvP: Opponent collected pickup:', data.pickupId);
+                    const idx = versusPickups.findIndex(p => p.id === data.pickupId);
+                    if (idx !== -1) {
+                        createExplosion(versusPickups[idx].x, versusPickups[idx].y, '#ff0000');
+                        versusPickups.splice(idx, 1);
+                    }
+                });
+
+                mpSocket.on('versus_hazard_spawned', (data) => {
+                    console.log('PvP: Received hazard spawn:', data.type);
+                    const hazard = {
+                        id: data.hazardId,
+                        type: data.type,
+                        x: data.x,
+                        y: data.y,
+                        width: data.width,
+                        height: data.height,
+                        direction: data.direction,
+                        speed: data.speed
+                    };
+                    if (data.type === 'wall') {
+                        versusWalls.push(hazard);
+                    } else {
+                        versusMines.push(hazard);
+                    }
+                });
+
                 // Direct listener for game_started (backup for non-host players)
                 mpSocket.on('game_started', async (data) => {
                     console.log('Received game_started event:', data);
@@ -4101,6 +4148,19 @@
                 resetCoopState();
             } else if (selectedGameMode === 'versus') {
                 resetVersusState();
+                // Host spawns pickups and syncs to opponent
+                isVersusHost = isRoomHost;
+                console.log('PvP: isVersusHost =', isVersusHost);
+                // Clear any existing versus pickups/hazards
+                versusPickups = [];
+                versusWalls = [];
+                versusMines = [];
+                versusPickupIdCounter = 0;
+                lastVersusSpawnTime = Date.now();
+                // Reset and show shield charge UI
+                shieldCharges = 0;
+                lightningActive = false;
+                updateShieldChargeDisplay();
             }
 
             // Set opponent info from room data if available
@@ -5570,6 +5630,25 @@
         let ghostActive = false;
         let ghostStartTime = 0;
         const ghostDuration = 5000;
+
+        // Lightning touch state (for versus mode - damages opponent on touch)
+        let lightningActive = false;
+        let lightningStartTime = 0;
+        const lightningDuration = 3000; // 3 seconds of lightning aura
+
+        // Shield charges (activatable ability, max 5)
+        let shieldCharges = 0;
+        const maxShieldCharges = 5;
+        const shieldChargeDuration = 5000; // Each charge lasts 5 seconds
+
+        // Versus mode synced pickups (float horizontally)
+        let versusPickups = [];
+        let versusWalls = [];
+        let versusMines = [];
+        let versusPickupIdCounter = 0;
+        let lastVersusSpawnTime = 0;
+        const versusSpawnInterval = 3000; // Spawn something every 3 seconds
+        let isVersusHost = false; // Host spawns pickups and syncs to opponent
 
         const keys = {};
         let touchMove = { x: 0, y: 0 };
@@ -7442,6 +7521,370 @@
             });
         }
 
+        // === VERSUS MODE SYNCED PICKUPS & HAZARDS ===
+
+        function spawnVersusPickup() {
+            if (!isVersusHost) return; // Only host spawns pickups
+
+            const now = Date.now();
+            if (now - lastVersusSpawnTime < versusSpawnInterval) return;
+            lastVersusSpawnTime = now;
+
+            // Random spawn type: 40% weapon, 30% powerup, 20% shield charge, 10% hazard
+            const rand = Math.random();
+            let category, type;
+
+            if (rand < 0.40) {
+                // Weapon pickup
+                category = 'weapon';
+                const weapons = ['machinegun', 'bazooka', 'laser', 'flak', 'disc', 'swarm'];
+                type = weapons[Math.floor(Math.random() * weapons.length)];
+            } else if (rand < 0.70) {
+                // Powerup
+                category = 'powerup';
+                const powerups = ['shield', 'ghost', 'lightning'];
+                type = powerups[Math.floor(Math.random() * powerups.length)];
+            } else if (rand < 0.90) {
+                // Shield charge
+                category = 'shield';
+                type = 'shieldCharge';
+            } else {
+                // Spawn hazard instead (wall or mine)
+                spawnVersusHazard();
+                return;
+            }
+
+            // Spawn from left or right side, float horizontally
+            const fromLeft = Math.random() < 0.5;
+            const direction = fromLeft ? 1 : -1;
+            const startX = fromLeft ? -30 : logicalWidth + 30;
+            const y = 100 + Math.random() * (logicalHeight - 300); // Middle area of screen
+
+            const pickup = {
+                id: `vp_${versusPickupIdCounter++}`,
+                type: type,
+                category: category,
+                x: startX,
+                y: y,
+                width: 35,
+                height: 35,
+                direction: direction,
+                speed: 80 + Math.random() * 40, // 80-120 pixels per second
+                rotation: 0
+            };
+
+            versusPickups.push(pickup);
+
+            // Broadcast to opponent
+            if (mpSocket && currentRoomCode) {
+                mpSocket.emit('versus_spawn_pickup', {
+                    roomCode: currentRoomCode,
+                    pickupId: pickup.id,
+                    type: pickup.type,
+                    category: pickup.category,
+                    x: pickup.x,
+                    y: pickup.y,
+                    direction: pickup.direction,
+                    speed: pickup.speed
+                });
+            }
+        }
+
+        function spawnVersusHazard() {
+            if (!isVersusHost) return;
+
+            const isWall = Math.random() < 0.6; // 60% walls, 40% mines
+            const fromLeft = Math.random() < 0.5;
+            const direction = fromLeft ? 1 : -1;
+            const startX = fromLeft ? -100 : logicalWidth + 100;
+            const y = 150 + Math.random() * (logicalHeight - 400);
+
+            const hazard = {
+                id: `vh_${versusPickupIdCounter++}`,
+                type: isWall ? 'wall' : 'mine',
+                x: startX,
+                y: y,
+                width: isWall ? 80 : 30,
+                height: isWall ? 20 : 30,
+                direction: direction,
+                speed: 60 + Math.random() * 30
+            };
+
+            if (isWall) {
+                versusWalls.push(hazard);
+            } else {
+                versusMines.push(hazard);
+            }
+
+            // Broadcast to opponent
+            if (mpSocket && currentRoomCode) {
+                mpSocket.emit('versus_spawn_hazard', {
+                    roomCode: currentRoomCode,
+                    hazardId: hazard.id,
+                    type: hazard.type,
+                    x: hazard.x,
+                    y: hazard.y,
+                    width: hazard.width,
+                    height: hazard.height,
+                    direction: hazard.direction,
+                    speed: hazard.speed
+                });
+            }
+        }
+
+        function updateVersusPickups(dt) {
+            // Update pickup positions (float horizontally)
+            for (let i = versusPickups.length - 1; i >= 0; i--) {
+                const p = versusPickups[i];
+                p.x += p.direction * p.speed * dt;
+                p.rotation += dt * 2;
+
+                // Remove if off screen
+                if ((p.direction > 0 && p.x > logicalWidth + 50) ||
+                    (p.direction < 0 && p.x < -50)) {
+                    versusPickups.splice(i, 1);
+                    continue;
+                }
+
+                // Check collision with player
+                if (checkCollision(p, player)) {
+                    collectVersusPickup(p, i);
+                }
+            }
+
+            // Update wall positions
+            for (let i = versusWalls.length - 1; i >= 0; i--) {
+                const w = versusWalls[i];
+                w.x += w.direction * w.speed * dt;
+
+                // Remove if off screen
+                if ((w.direction > 0 && w.x > logicalWidth + 100) ||
+                    (w.direction < 0 && w.x < -100)) {
+                    versusWalls.splice(i, 1);
+                    continue;
+                }
+
+                // Check collision with player (instant death unless ghost/invincible)
+                if (checkCollision(w, player)) {
+                    if (!ghostActive && !isInvincible && !shieldActive) {
+                        console.log('PvP: Hit versus wall - instant death!');
+                        createExplosion(player.x, player.y, '#ff0000');
+                        playExplosion();
+                        takePvPDamage(100); // Massive damage = death
+                    } else if (shieldActive) {
+                        shieldHits = 0;
+                        deactivateShield();
+                        createExplosion(player.x, player.y, '#00ffff');
+                    }
+                }
+            }
+
+            // Update mine positions
+            for (let i = versusMines.length - 1; i >= 0; i--) {
+                const m = versusMines[i];
+                m.x += m.direction * m.speed * dt;
+
+                // Remove if off screen
+                if ((m.direction > 0 && m.x > logicalWidth + 50) ||
+                    (m.direction < 0 && m.x < -50)) {
+                    versusMines.splice(i, 1);
+                    continue;
+                }
+
+                // Check collision with player (damage unless ghost/invincible)
+                if (checkCollision(m, player)) {
+                    if (!ghostActive && !isInvincible) {
+                        console.log('PvP: Hit mine!');
+                        createExplosion(m.x, m.y, '#ff6600');
+                        playExplosion();
+                        versusMines.splice(i, 1);
+
+                        if (shieldActive) {
+                            shieldHits--;
+                            if (shieldHits <= 0) deactivateShield();
+                        } else {
+                            takePvPDamage(PVP_BULLET_DAMAGE * 2);
+                        }
+                    }
+                }
+            }
+        }
+
+        function collectVersusPickup(pickup, index) {
+            versusPickups.splice(index, 1);
+
+            // Broadcast collection to opponent
+            if (mpSocket && currentRoomCode) {
+                mpSocket.emit('versus_pickup_collected', {
+                    roomCode: currentRoomCode,
+                    pickupId: pickup.id,
+                    playerId: myPlayerId
+                });
+            }
+
+            // Apply the pickup effect
+            createExplosion(pickup.x, pickup.y, '#00ff00');
+            playPowerupCollect();
+
+            if (pickup.category === 'weapon') {
+                // Weapon pickup
+                if (!unlockedWeapons.includes(pickup.type)) {
+                    unlockedWeapons.push(pickup.type);
+                }
+                weaponAmmo[pickup.type] = (weaponAmmo[pickup.type] || 0) + 30;
+                currentWeapon = pickup.type;
+                updateWeaponDisplay();
+            } else if (pickup.category === 'powerup') {
+                // Powerup
+                if (pickup.type === 'shield') {
+                    activateShield();
+                } else if (pickup.type === 'ghost') {
+                    activateGhost();
+                } else if (pickup.type === 'lightning') {
+                    activateLightning();
+                }
+            } else if (pickup.category === 'shield') {
+                // Shield charge
+                addShieldCharge();
+            }
+        }
+
+        function drawVersusPickups() {
+            // Draw pickups
+            versusPickups.forEach(p => {
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation);
+
+                // Draw glow
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = p.category === 'weapon' ? '#ff6600' :
+                                  p.category === 'shield' ? '#00ffff' : '#00ff00';
+
+                // Draw pickup based on type
+                if (p.category === 'weapon') {
+                    ctx.fillStyle = '#ff6600';
+                    ctx.fillRect(-15, -15, 30, 30);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(p.type.substr(0, 3).toUpperCase(), 0, 5);
+                } else if (p.category === 'shield') {
+                    ctx.fillStyle = '#00ffff';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('🛡', 0, 6);
+                } else {
+                    // Powerup
+                    ctx.fillStyle = p.type === 'lightning' ? '#ffff00' :
+                                   p.type === 'ghost' ? '#64c8ff' : '#00ff00';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '14px Arial';
+                    ctx.textAlign = 'center';
+                    const icon = p.type === 'lightning' ? '⚡' :
+                                p.type === 'ghost' ? '👻' : '🛡';
+                    ctx.fillText(icon, 0, 5);
+                }
+
+                ctx.restore();
+            });
+
+            // Draw walls
+            versusWalls.forEach(w => {
+                ctx.fillStyle = '#ff0000';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ff0000';
+                ctx.fillRect(w.x - w.width/2, w.y - w.height/2, w.width, w.height);
+                ctx.shadowBlur = 0;
+
+                // Warning stripes
+                ctx.fillStyle = '#ffff00';
+                for (let i = 0; i < w.width; i += 20) {
+                    ctx.fillRect(w.x - w.width/2 + i, w.y - w.height/2, 10, w.height);
+                }
+            });
+
+            // Draw mines
+            versusMines.forEach(m => {
+                ctx.save();
+                ctx.translate(m.x, m.y);
+
+                ctx.fillStyle = '#333';
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#ff0000';
+                ctx.beginPath();
+                ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Spikes
+                ctx.fillStyle = '#666';
+                for (let i = 0; i < 8; i++) {
+                    const angle = (i / 8) * Math.PI * 2;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(angle) * 12, Math.sin(angle) * 12);
+                    ctx.lineTo(Math.cos(angle) * 20, Math.sin(angle) * 20);
+                    ctx.lineTo(Math.cos(angle + 0.2) * 12, Math.sin(angle + 0.2) * 12);
+                    ctx.fill();
+                }
+
+                // Blinking light
+                if (Math.floor(Date.now() / 300) % 2 === 0) {
+                    ctx.fillStyle = '#ff0000';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            });
+        }
+
+        // Shield charge functions
+        function addShieldCharge() {
+            if (shieldCharges < maxShieldCharges) {
+                shieldCharges++;
+                updateShieldChargeDisplay();
+                console.log('Shield charge added. Total:', shieldCharges);
+            }
+        }
+
+        function activateShieldCharge() {
+            if (shieldCharges > 0 && !shieldActive) {
+                shieldCharges--;
+                updateShieldChargeDisplay();
+                activateShield();
+                console.log('Shield activated from charge. Remaining:', shieldCharges);
+            }
+        }
+
+        function updateShieldChargeDisplay() {
+            const display = document.getElementById('shieldChargeDisplay');
+            const button = document.getElementById('shieldButton');
+
+            if (display) {
+                display.textContent = `🛡 x${shieldCharges}`;
+                // Show in versus mode
+                const inVersus = isMultiplayer && selectedGameMode === 'versus';
+                display.style.display = inVersus ? 'inline' : 'none';
+            }
+
+            if (button) {
+                // Show button in versus mode when we have charges and shield isn't active
+                const inVersus = isMultiplayer && selectedGameMode === 'versus';
+                const canUse = shieldCharges > 0 && !shieldActive;
+                button.style.display = inVersus ? 'inline-block' : 'none';
+                button.disabled = !canUse;
+                button.style.opacity = canUse ? '1' : '0.5';
+            }
+        }
+
         // === BACKGROUND DRAWING ===
         function getBackgroundGradient() {
             // Background changes based on level - going deeper into space
@@ -8575,12 +9018,16 @@
             shieldHits = shieldMaxHits;
             shieldStartTime = Date.now();
             if (!wasActive && !isMuted) startBackgroundMusic(true);
+            // Update shield button state (disable while active)
+            updateShieldChargeDisplay();
         }
 
         function deactivateShield() {
             shieldActive = false;
             shieldHits = 0;
             if (!isMuted && gameRunning) startBackgroundMusic(false);
+            // Update shield button state
+            updateShieldChargeDisplay();
         }
 
         function activateGhost() {
@@ -8599,7 +9046,14 @@
             // Flash screen white
             lightningFlashAlpha = 1.0;
 
-            // Kill all enemies on screen
+            // In versus mode, activate lightning aura for touch damage
+            if (isMultiplayer && selectedGameMode === 'versus') {
+                lightningActive = true;
+                lightningStartTime = Date.now();
+                console.log('PvP: Lightning aura activated for', lightningDuration, 'ms');
+            }
+
+            // Kill all enemies on screen (single player / coop)
             const killedCount = enemies.length;
             enemies.forEach(e => {
                 createExplosion(e.x, e.y, '#ffff00');
@@ -8624,6 +9078,10 @@
 
             // Check level up after killing enemies
             checkLevelUp();
+        }
+
+        function deactivateLightning() {
+            lightningActive = false;
         }
 
         function updateLightningFlash(dt) {
@@ -8845,6 +9303,12 @@
             // Update powerups
             powerups.forEach(p => { p.y += p.speed * dt; p.rotation += 3 * dt; });
             powerups = powerups.filter(p => p.y < logicalHeight + 50);
+
+            // Update versus mode pickups and hazards
+            if (isMultiplayer && selectedGameMode === 'versus' && versusState.roundActive) {
+                spawnVersusPickup(); // Host spawns pickups
+                updateVersusPickups(dt); // Update positions and check collisions
+            }
 
             // Update bombs
             bombs = bombs.filter(b => {
@@ -9085,8 +9549,7 @@
                 }
 
                 // Check player-to-player collision (both take damage when crashing into each other)
-                if (otherPlayer.isActive && !ghostActive && !otherPlayer.ghostActive &&
-                    !versusState.myInvulnerable && !versusState.opponentInvulnerable) {
+                if (otherPlayer.isActive && !versusState.myInvulnerable && !versusState.opponentInvulnerable) {
                     const opponentHitbox = {
                         x: otherPlayer.x - 25,
                         y: otherPlayer.y - 25,
@@ -9095,22 +9558,42 @@
                     };
 
                     if (checkCollision(player, opponentHitbox)) {
-                        // Collision! Both players take damage
-                        console.log('PvP: Player collision detected!');
-                        createExplosion((player.x + otherPlayer.x) / 2, (player.y + otherPlayer.y) / 2, '#ff6600');
-                        playExplosion();
+                        // Collision detected!
+                        console.log('PvP: Player collision! ghost:', ghostActive, 'lightning:', lightningActive);
 
-                        // We take damage
-                        if (shieldActive) {
-                            shieldHits--;
-                            createExplosion(player.x, player.y, '#00ffff');
-                            if (shieldHits <= 0) deactivateShield();
-                        } else if (!isInvincible) {
-                            takePvPDamage(PVP_BULLET_DAMAGE);
+                        // Lightning touch: if we have lightning active, we damage opponent
+                        if (lightningActive) {
+                            console.log('PvP: Lightning touch - dealing damage to opponent!');
+                            createExplosion(otherPlayer.x, otherPlayer.y, '#ffff00');
+                            playExplosion();
+                            dealPvPDamage(PVP_BULLET_DAMAGE * 2); // Double damage from lightning
                         }
 
-                        // Deal damage to opponent (if they don't have shield - their client handles shield)
-                        dealPvPDamage(PVP_BULLET_DAMAGE);
+                        // Ghost mode: we can't be touched, but we can still damage opponent
+                        if (ghostActive) {
+                            // We're in ghost mode - we take no damage but deal damage
+                            if (!lightningActive) { // Don't double-deal if lightning is also active
+                                dealPvPDamage(PVP_BULLET_DAMAGE);
+                            }
+                        } else if (!otherPlayer.ghostActive) {
+                            // Normal collision - both take damage (unless opponent is ghost)
+                            createExplosion((player.x + otherPlayer.x) / 2, (player.y + otherPlayer.y) / 2, '#ff6600');
+                            playExplosion();
+
+                            // We take damage
+                            if (shieldActive) {
+                                shieldHits--;
+                                createExplosion(player.x, player.y, '#00ffff');
+                                if (shieldHits <= 0) deactivateShield();
+                            } else if (!isInvincible) {
+                                takePvPDamage(PVP_BULLET_DAMAGE);
+                            }
+
+                            // Deal damage to opponent (only if not already dealt via lightning/ghost)
+                            if (!lightningActive) {
+                                dealPvPDamage(PVP_BULLET_DAMAGE);
+                            }
+                        }
                     }
                 }
             }
@@ -9259,6 +9742,9 @@
             // Ghost timer
             if (ghostActive && (Date.now() - ghostStartTime) >= ghostDuration) deactivateGhost();
 
+            // Lightning aura timer (versus mode)
+            if (lightningActive && (Date.now() - lightningStartTime) >= lightningDuration) deactivateLightning();
+
             // Update electric fences
             updateElectricFences(dt);
 
@@ -9308,6 +9794,10 @@
         function draw() {
             drawBackground();
             walls.forEach(drawWall);
+            // Draw versus mode pickups/walls/mines
+            if (isMultiplayer && selectedGameMode === 'versus') {
+                drawVersusPickups();
+            }
             bombs.forEach(drawBomb);
             mines.forEach(drawMine);
             electricFences.forEach(drawElectricFence);
@@ -9815,6 +10305,7 @@
             if (e.code === 'Space' && !e.repeat && gameRunning && !gamePaused) { shoot(); e.preventDefault(); }
             keys[e.code] = true;
             if (e.code === 'KeyQ' && gameRunning && !gamePaused) { switchWeapon(); e.preventDefault(); }
+            if (e.code === 'KeyE' && !e.repeat && gameRunning && !gamePaused) { activateShieldCharge(); e.preventDefault(); } // E for shield
             if (e.code === 'KeyB' && !e.repeat && gameRunning && !gamePaused) { dropPlayerBomb(); e.preventDefault(); }
             if (e.code === 'KeyP' && gameRunning) { togglePause(); e.preventDefault(); }
             if (e.code === 'Escape' && gameRunning) {

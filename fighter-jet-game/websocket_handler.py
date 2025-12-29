@@ -492,3 +492,55 @@ def register_handlers():
             'reason': data.get('reason', 'quit'),
             'timestamp': datetime.now().isoformat()
         }, to=room_code, include_self=False)
+
+    # === VERSUS MODE SYNCED PICKUPS ===
+
+    @socketio.on('versus_spawn_pickup')
+    def handle_versus_spawn_pickup(data):
+        """Host spawns a pickup - sync to opponent."""
+        room_code = data.get('roomCode')
+        if not room_code:
+            return
+
+        emit('versus_pickup_spawned', {
+            'pickupId': data.get('pickupId'),
+            'type': data.get('type'),
+            'category': data.get('category'),  # 'weapon', 'powerup', 'shield'
+            'x': data.get('x'),
+            'y': data.get('y'),
+            'direction': data.get('direction'),  # 1 = left-to-right, -1 = right-to-left
+            'speed': data.get('speed'),
+            'timestamp': datetime.now().isoformat()
+        }, to=room_code, include_self=False)
+
+    @socketio.on('versus_pickup_collected')
+    def handle_versus_pickup_collected(data):
+        """Player collected a pickup - notify opponent to remove it."""
+        room_code = data.get('roomCode')
+        if not room_code:
+            return
+
+        emit('versus_pickup_removed', {
+            'pickupId': data.get('pickupId'),
+            'collectedBy': data.get('playerId'),
+            'timestamp': datetime.now().isoformat()
+        }, to=room_code, include_self=False)
+
+    @socketio.on('versus_spawn_hazard')
+    def handle_versus_spawn_hazard(data):
+        """Host spawns a wall or mine - sync to opponent."""
+        room_code = data.get('roomCode')
+        if not room_code:
+            return
+
+        emit('versus_hazard_spawned', {
+            'hazardId': data.get('hazardId'),
+            'type': data.get('type'),  # 'wall' or 'mine'
+            'x': data.get('x'),
+            'y': data.get('y'),
+            'width': data.get('width'),
+            'height': data.get('height'),
+            'direction': data.get('direction'),
+            'speed': data.get('speed'),
+            'timestamp': datetime.now().isoformat()
+        }, to=room_code, include_self=False)
