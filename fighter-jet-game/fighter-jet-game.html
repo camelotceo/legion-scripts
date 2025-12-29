@@ -1281,6 +1281,26 @@
 
         // === SESSION & AUTH MANAGEMENT ===
         const API_BASE = window.location.origin;
+
+        // Debug logging to server for PvP troubleshooting
+        function serverLog(message, details = {}, type = 'info') {
+            // Also log to console
+            console.log(`[SERVER-LOG] ${message}`, details);
+
+            // Send to server (fire and forget)
+            fetch(`${API_BASE}/api/debug/log`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    playerId: typeof myPlayerId !== 'undefined' ? myPlayerId : 'unknown',
+                    roomCode: typeof currentRoomCode !== 'undefined' ? currentRoomCode : 'none',
+                    type: type,
+                    message: message,
+                    details: details
+                })
+            }).catch(() => {}); // Silently ignore errors
+        }
+
         let sessionToken = localStorage.getItem('sessionToken');
         let deviceFingerprint = localStorage.getItem('deviceFingerprint');
         let currentGameSessionId = null;
@@ -3669,6 +3689,7 @@
 
                 mpSocket.on('joined_game', (data) => {
                     console.log('Successfully joined room:', data.roomCode, 'success:', data.success);
+                    serverLog('WebSocket room joined', { roomCode: data.roomCode, success: data.success, myPlayerId: myPlayerId });
                 });
 
                 mpSocket.on('player_joined', (data) => {
@@ -3814,6 +3835,7 @@
             // Debug: log opponent updates
             if (!otherPlayer.id) {
                 console.log('PvP: First opponent update received!', data.playerId, data.x, data.y);
+                serverLog('First opponent update received', { opponentId: data.playerId, x: data.x, y: data.y, myPlayerId: myPlayerId });
             }
 
             // Mark partner/opponent as connected
@@ -3947,6 +3969,7 @@
             if (positionSyncInterval) clearInterval(positionSyncInterval);
 
             console.log('PvP: Starting position sync - playerId:', myPlayerId, 'roomCode:', currentRoomCode, 'gameMode:', selectedGameMode);
+            serverLog('Position sync started', { playerId: myPlayerId, roomCode: currentRoomCode, gameMode: selectedGameMode });
 
             positionSyncInterval = setInterval(() => {
                 if (!gameRunning || !isMultiplayer || !mpSocket || !currentRoomCode) {

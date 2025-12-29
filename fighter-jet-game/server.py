@@ -2635,6 +2635,31 @@ def end_multiplayer_game():
     return jsonify({'success': True})
 
 
+@app.route('/api/debug/log', methods=['POST'])
+def debug_log():
+    """Receive debug logs from client for troubleshooting multiplayer issues."""
+    data = request.get_json() or {}
+    player_id = data.get('playerId', 'unknown')
+    room_code = data.get('roomCode', 'none')
+    log_type = data.get('type', 'info')
+    message = data.get('message', '')
+    details = data.get('details', {})
+
+    # Log to server console/logs
+    log_msg = f"[CLIENT-LOG] Player:{player_id[:8]}... Room:{room_code} Type:{log_type} | {message}"
+    if details:
+        log_msg += f" | Details: {json.dumps(details)}"
+
+    if log_type == 'error':
+        print(f"ERROR: {log_msg}")
+        logger.error(log_msg)
+    else:
+        print(log_msg)
+        logger.info(log_msg)
+
+    return jsonify({'success': True})
+
+
 # Initialize scheduler when running with gunicorn
 backup_scheduler = None
 
