@@ -3846,7 +3846,15 @@
             otherPlayer.id = data.playerId;
             otherPlayer.name = data.playerName || otherPlayer.name || 'Opponent';
             otherPlayer.x = data.x;
-            otherPlayer.y = data.y;
+
+            // In versus mode, mirror opponent's Y position so they appear at top of screen
+            // (they see themselves at bottom, we see them at top - like facing each other)
+            if (selectedGameMode === 'versus') {
+                otherPlayer.y = logicalHeight - data.y;
+            } else {
+                otherPlayer.y = data.y;
+            }
+
             otherPlayer.dx = data.dx || 0;
             otherPlayer.dy = data.dy || 0;
             otherPlayer.shieldActive = data.shieldActive || false;
@@ -3864,7 +3872,7 @@
         }
 
         function handleOtherPlayerShoot(data) {
-            // Create bullet for other player (visual only, no collision from our side)
+            // Create bullet for other player
             if (data.playerId === myPlayerId) return;
 
             const weaponData = {
@@ -3874,20 +3882,32 @@
             };
             const wp = weaponData[data.weapon] || weaponData.pistol;
 
-            // In versus mode, opponent bullets go DOWN (toward player)
-            // In coop mode, partner bullets go UP (same direction as player)
-            const bulletDirection = (selectedGameMode === 'versus') ? wp.speed : -wp.speed;
+            // In versus mode, opponent is at top, their bullets go DOWN (positive speed)
+            // In coop mode, partner bullets go UP (negative speed, same as player)
+            // Note: bullet.speed is used for movement, negative = up, positive = down
+            const bulletSpeed = (selectedGameMode === 'versus') ? wp.speed : -wp.speed;
+
+            // Transform Y position for versus mode - opponent shoots from top of screen
+            // The received Y is from their perspective (bottom), we need to mirror it
+            let bulletY = data.y;
+            if (selectedGameMode === 'versus') {
+                bulletY = logicalHeight - data.y;  // Mirror Y position
+            }
 
             bullets.push({
                 x: data.x,
-                y: data.y,
-                dy: bulletDirection,
+                y: bulletY,
+                speed: bulletSpeed,  // Use 'speed' not 'dy' - this is what bullet movement uses
                 size: wp.size,
+                width: wp.size * 2,
+                height: wp.size * 3,
                 color: wp.color,
                 weapon: data.weapon,
-                fromPartner: true,  // Mark as partner's/opponent's bullet
+                fromPartner: true,  // Mark as opponent's bullet for collision detection
                 id: data.bulletId
             });
+
+            console.log('PvP: Created opponent bullet at', Math.round(data.x), Math.round(bulletY), 'speed:', bulletSpeed);
         }
 
         function handleOtherPlayerDied(data) {
