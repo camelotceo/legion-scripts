@@ -144,68 +144,76 @@ Server-side (in `.env` on production):
 
 ---
 
-## Current Work In Progress: PvP 1v1 Mode Fixes
+## Testing
 
-**Status:** Debugging player sync issues in versus mode
+```bash
+# Install test dependencies
+./venv/bin/pip install pytest pytest-mock fakeredis eventlet flask-socketio
 
-### Problem
-In 1v1 head-to-head mode, players cannot see each other moving or firing, and hits don't register.
+# Run all tests
+./venv/bin/python -m pytest tests/ -v
 
-### Fixes Already Applied (deployed to production)
+# Run specific test file
+./venv/bin/python -m pytest tests/test_multiplayer.py -v
 
-1. **Disabled NPC spawning in versus mode** (`fighter-jet-game.html:~7085`)
-   - Added `isPvPMode` check to skip enemy/obstacle spawning
-   - Only players shoot at each other in PvP
+# Run with coverage
+./venv/bin/python -m pytest tests/ --cov=. --cov-report=html
+```
 
-2. **Fixed bullet broadcast** (`fighter-jet-game.html:~8303`)
-   - Changed from `selectedGameMode === 'coop'` to include `|| selectedGameMode === 'versus'`
-   - Now bullets are broadcast in both coop and versus modes
+Test files:
+- `tests/test_server.py` - Flask API endpoint tests
+- `tests/test_redis_client.py` - Redis operations tests
+- `tests/test_multiplayer.py` - 1v1/coop multiplayer tests
 
-3. **Fixed quitFromOpponentLeft** (`fighter-jet-game.html:~9674`)
-   - Does cleanup directly instead of calling `quitGame()` which returned early
+---
 
-4. **Added debug logging** (both client and server)
-   - Client: logs WebSocket connection, room joins, position sync, game updates
-   - Server: logs player_state broadcasts and player_shoot events
+## Multiplayer Architecture (1v1 and Coop)
 
-### Debug Logging Currently Active
+### Key Concepts
 
-**Client-side (browser console):**
-- `Successfully joined room: XXXXXX` - WebSocket room join confirmation
-- `PvP: First opponent update received!` - First position from opponent
-- `PvP: Received player_state from X at (x, y)` - Ongoing position updates (2% sample)
-- `PvP: Sending position X Y to room XXXXXX` - Outgoing position sync (2% sample)
-- `PvP sync skipped: {...}` - When sync conditions not met
+**Position Mirroring (Versus Mode Only):**
+- Each player sees themselves at BOTTOM, opponent at TOP
+- Y positions are mirrored: `mirroredY = logicalHeight - originalY`
+- Opponent jet is rotated 180° to face downward
+- Applied in `updateOtherPlayer()` and `handleOtherPlayerShoot()`
 
-**Server-side (docker logs):**
-- `Player X joined room XXXXXX` - WebSocket room join
-- `player_state: X pos (x, y) -> room XXXXXX` - Position broadcast (5% sample)
-- `player_shoot: X at (x, y) -> room XXXXXX` - All shoot events
+**WebSocket Flow:**
+1. Player creates/joins room → gets `myPlayerId` from auth
+2. `connectWebSocket()` joins Socket.IO room with same `playerId`
+3. `startPositionSync()` sends position every 50ms via `player_state` event
+4. Server broadcasts to room via `game_update` event
+5. `handleMultiplayerGameUpdate()` routes by `data.type`
 
-### Next Steps to Debug
-
-1. Test the game and check browser console for debug messages
-2. Check server logs: `ssh felican.ai "docker logs fighter-jet-game --tail 100"`
-3. Look for:
-   - Are both players joining the same Socket.IO room?
-   - Are position updates being sent/received?
-   - Are shoot events being broadcast?
+**Critical:** In multiplayer mode, `startGame()` skips `joinAsPlayer()` to preserve the playerId used for room joining.
 
 ### Key Code Locations
 
 | Function | File:Line | Purpose |
 |----------|-----------|---------|
-| `connectWebSocket()` | html:3625 | WebSocket connection and room join |
-| `startPositionSync()` | html:3934 | Position sync interval (50ms) |
-| `updateOtherPlayer()` | html:3798 | Receives opponent position updates |
-| `drawOtherPlayer()` | html:7640 | Renders opponent jet |
-| `handleOtherPlayerShoot()` | html:3832 | Creates opponent bullets |
+| `connectWebSocket()` | html:~3625 | WebSocket connection and room join |
+| `startPositionSync()` | html:~3946 | Position sync interval (50ms) |
+| `updateOtherPlayer()` | html:~3831 | Receives/mirrors opponent position |
+| `handleOtherPlayerShoot()` | html:~3874 | Creates opponent bullets (mirrored) |
+| `drawOtherPlayer()` | html:~7697 | Renders opponent jet (rotated in versus) |
 | `handle_player_state()` | websocket_handler.py:81 | Server broadcasts position |
 | `handle_player_shoot()` | websocket_handler.py:116 | Server broadcasts shots |
 
+### Debug Logging
+
+**Server-side (docker logs):**
+```bash
+ssh felican.ai "docker logs fighter-jet-game -f 2>&1 | grep -E 'CLIENT-LOG|player_state|player_shoot|joined room'"
+```
+
+**Client logs sent to server via `/api/debug/log`:**
+- `WebSocket room joined` - Confirms room join with playerId
+- `Position sync started` - Shows playerId and roomCode
+- `First opponent update received` - First position from opponent
+- `Created opponent bullet` - Bullet created from opponent shot
+
 ### PvP Collision Detection
 
-Located at `fighter-jet-game.html:~8980`:
-- Our bullets hit opponent: checks `!bullet.isEnemy && !bullet.fromPartner`
-- Opponent bullets hit us: checks `bullet.fromPartner`
-- Requires `otherPlayer.id` to be set and `versusState.roundActive` to be true
+Located at `fighter-jet-game.html:~9037`:
+- Our bullets hit opponent: `!bullet.isEnemy && !bullet.fromPartner`
+- Opponent bullets hit us: `bullet.fromPartner`
+- Requires `otherPlayer.id` set and `versusState.roundActive` true

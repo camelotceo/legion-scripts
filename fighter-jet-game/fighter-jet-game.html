@@ -3873,7 +3873,11 @@
 
         function handleOtherPlayerShoot(data) {
             // Create bullet for other player
-            if (data.playerId === myPlayerId) return;
+            console.log('PvP: Received shot from', data.playerId, 'myPlayerId:', myPlayerId, 'at', Math.round(data.x), Math.round(data.y));
+            if (data.playerId === myPlayerId) {
+                console.log('PvP: Ignoring own bullet from server');
+                return;
+            }
 
             const weaponData = {
                 pistol: { speed: 600, size: 4, color: '#4ade80' },
@@ -3882,10 +3886,11 @@
             };
             const wp = weaponData[data.weapon] || weaponData.pistol;
 
-            // In versus mode, opponent is at top, their bullets go DOWN (positive speed)
-            // In coop mode, partner bullets go UP (negative speed, same as player)
-            // Note: bullet.speed is used for movement, negative = up, positive = down
-            const bulletSpeed = (selectedGameMode === 'versus') ? wp.speed : -wp.speed;
+            // Bullet movement: b.y -= b.speed * dt
+            // So: positive speed = UP, negative speed = DOWN
+            // In versus mode, opponent is at top, their bullets should go DOWN (negative speed)
+            // In coop mode, partner bullets go UP (positive speed, same as player)
+            const bulletSpeed = (selectedGameMode === 'versus') ? -wp.speed : wp.speed;
 
             // Transform Y position for versus mode - opponent shoots from top of screen
             // The received Y is from their perspective (bottom), we need to mirror it
@@ -8358,6 +8363,7 @@
 
             // Broadcast to partner/opponent in multiplayer modes
             if (isMultiplayer && (selectedGameMode === 'coop' || selectedGameMode === 'versus')) {
+                console.log('PvP: I shot at', Math.round(player.x), Math.round(player.y - 25), 'myPlayerId:', myPlayerId);
                 broadcastShoot(player.x, player.y - 25, currentWeapon);
             }
         }
@@ -9075,6 +9081,36 @@
                             // Take PvP damage
                             takePvPDamage(PVP_BULLET_DAMAGE);
                         }
+                    }
+                }
+
+                // Check player-to-player collision (both take damage when crashing into each other)
+                if (otherPlayer.isActive && !ghostActive && !otherPlayer.ghostActive &&
+                    !versusState.myInvulnerable && !versusState.opponentInvulnerable) {
+                    const opponentHitbox = {
+                        x: otherPlayer.x - 25,
+                        y: otherPlayer.y - 25,
+                        width: 50,
+                        height: 50
+                    };
+
+                    if (checkCollision(player, opponentHitbox)) {
+                        // Collision! Both players take damage
+                        console.log('PvP: Player collision detected!');
+                        createExplosion((player.x + otherPlayer.x) / 2, (player.y + otherPlayer.y) / 2, '#ff6600');
+                        playExplosion();
+
+                        // We take damage
+                        if (shieldActive) {
+                            shieldHits--;
+                            createExplosion(player.x, player.y, '#00ffff');
+                            if (shieldHits <= 0) deactivateShield();
+                        } else if (!isInvincible) {
+                            takePvPDamage(PVP_BULLET_DAMAGE);
+                        }
+
+                        // Deal damage to opponent (if they don't have shield - their client handles shield)
+                        dealPvPDamage(PVP_BULLET_DAMAGE);
                     }
                 }
             }
