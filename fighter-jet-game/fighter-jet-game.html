@@ -3632,7 +3632,7 @@
             try {
                 // If socket already exists and is connected, just join the room
                 if (mpSocket && mpSocket.connected) {
-                    console.log('WebSocket already connected, joining room');
+                    console.log('WebSocket already connected, joining room:', currentRoomCode, 'as', myPlayerId);
                     if (currentRoomCode) {
                         mpSocket.emit('join_game', {
                             roomCode: currentRoomCode,
@@ -3652,8 +3652,9 @@
                 mpSocket = io(API_BASE, { forceNew: true });
 
                 mpSocket.on('connect', () => {
-                    console.log('WebSocket connected');
+                    console.log('WebSocket connected, socket id:', mpSocket.id);
                     if (currentRoomCode) {
+                        console.log('Joining room:', currentRoomCode, 'as', myPlayerId);
                         mpSocket.emit('join_game', {
                             roomCode: currentRoomCode,
                             playerId: myPlayerId,
@@ -3682,6 +3683,10 @@
                 });
 
                 mpSocket.on('game_update', (data) => {
+                    // Debug: log game updates
+                    if (data.type === 'player_state' && Math.random() < 0.02) {
+                        console.log('PvP: Received player_state from', data.playerId, 'at', data.x, data.y);
+                    }
                     handleMultiplayerGameUpdate(data);
                 });
 
@@ -3793,6 +3798,11 @@
         function updateOtherPlayer(data) {
             // Update the other player's state from WebSocket
             if (data.playerId === myPlayerId) return; // Ignore own updates
+
+            // Debug: log opponent updates
+            if (!otherPlayer.id) {
+                console.log('PvP: First opponent update received!', data.playerId, data.x, data.y);
+            }
 
             // Mark partner/opponent as connected
             if (selectedGameMode === 'coop') {
@@ -3925,12 +3935,20 @@
             if (positionSyncInterval) clearInterval(positionSyncInterval);
 
             positionSyncInterval = setInterval(() => {
-                if (!gameRunning || !isMultiplayer || !mpSocket || !currentRoomCode) return;
+                if (!gameRunning || !isMultiplayer || !mpSocket || !currentRoomCode) {
+                    if (Math.random() < 0.01) console.log('PvP sync skipped:', { gameRunning, isMultiplayer, hasSocket: !!mpSocket, currentRoomCode });
+                    return;
+                }
 
                 // Determine isActive based on game mode
                 const playerIsActive = selectedGameMode === 'versus'
                     ? (versusState.myHealth > 0 && versusState.roundActive)
                     : coopState.amActive;
+
+                // Debug: log position sync sends
+                if (Math.random() < 0.02) {
+                    console.log('PvP: Sending position', player.x.toFixed(0), player.y.toFixed(0), 'to room', currentRoomCode);
+                }
 
                 mpSocket.emit('player_state', {
                     roomCode: currentRoomCode,
@@ -4024,9 +4042,12 @@
             }
 
             // Set opponent info from room data if available
+            console.log('launchMultiplayerGame: room data:', room);
             if (room && room.players) {
+                console.log('launchMultiplayerGame: players:', room.players, 'myPlayerId:', myPlayerId);
                 const opponent = room.players.find(p => p.id !== myPlayerId);
                 if (opponent) {
+                    console.log('launchMultiplayerGame: found opponent:', opponent);
                     otherPlayer.id = opponent.id;
                     otherPlayer.name = opponent.name || (selectedGameMode === 'versus' ? 'Opponent' : 'Partner');
                     if (selectedGameMode === 'coop') {
@@ -4034,7 +4055,11 @@
                     }
                     // P2 gets green color if P1 is blue, orange if P1 is pink
                     otherPlayer.color = selectedColor === 'blue' ? 'green' : 'orange';
+                } else {
+                    console.log('launchMultiplayerGame: no opponent found in players array');
                 }
+            } else {
+                console.log('launchMultiplayerGame: no room or players data');
             }
 
             // Start the game
@@ -7615,7 +7640,11 @@
         function drawOtherPlayer() {
             if (!isMultiplayer) return;
             if (selectedGameMode === 'coop' && !coopState.partnerConnected) return;
-            if (selectedGameMode === 'versus' && !otherPlayer.id) return;
+            if (selectedGameMode === 'versus' && !otherPlayer.id) {
+                // Debug: log why we're not drawing
+                if (Math.random() < 0.01) console.log('PvP: Not drawing opponent - no otherPlayer.id yet');
+                return;
+            }
 
             const colors = jetColors[otherPlayer.color] || jetColors.green;
             ctx.save();
@@ -9247,50 +9276,56 @@
             if (gameRunning) {
                 const diff = getDiffSettings();
 
-                // Spawn powerups, walls, and mines even during boss fights
+                // In versus mode (1v1), NO NPCs or obstacles spawn - just players vs players
+                const isPvPMode = isMultiplayer && selectedGameMode === 'versus';
+
+                // Spawn powerups in versus mode (both players can grab them)
                 powerupAccumulator += dt;
                 if (powerupAccumulator >= 6 && Math.random() < 0.4) { spawnPowerup(); powerupAccumulator = 0; }
 
                 weaponAccumulator += dt;
                 if (weaponAccumulator >= 10 && Math.random() < 0.4) { spawnWeaponPickup(); weaponAccumulator = 0; }
 
-                // Walls spawn after 5 kills
-                const wallSpawnTime = Math.max(1.5, 4 - level * 0.5);
-                const wallChance = 0.2 + level * 0.1 + (selectedDifficulty === 'hard' ? 0.15 : 0) + (selectedDifficulty === 'expert' ? 0.25 : 0);
-                wallAccumulator += dt;
-                if (wallAccumulator >= wallSpawnTime && totalEnemiesKilled >= 5 && Math.random() < wallChance) { spawnWall(); wallAccumulator = 0; }
+                // Skip all enemy/obstacle spawning in PvP versus mode
+                if (!isPvPMode) {
+                    // Walls spawn after 5 kills
+                    const wallSpawnTime = Math.max(1.5, 4 - level * 0.5);
+                    const wallChance = 0.2 + level * 0.1 + (selectedDifficulty === 'hard' ? 0.15 : 0) + (selectedDifficulty === 'expert' ? 0.25 : 0);
+                    wallAccumulator += dt;
+                    if (wallAccumulator >= wallSpawnTime && totalEnemiesKilled >= 5 && Math.random() < wallChance) { spawnWall(); wallAccumulator = 0; }
 
-                // Mines spawn after a few kills
-                mineAccumulator += dt;
-                if (mineAccumulator >= 4 && totalEnemiesKilled >= 3 && Math.random() < 0.3) { spawnMine(); mineAccumulator = 0; }
+                    // Mines spawn after a few kills
+                    mineAccumulator += dt;
+                    if (mineAccumulator >= 4 && totalEnemiesKilled >= 3 && Math.random() < 0.3) { spawnMine(); mineAccumulator = 0; }
 
-                // Electric fences spawn in level 3+ (not during boss fight)
-                if (!bossActive && level >= 3) {
-                    fenceSpawnAccumulator += dt;
-                    if (fenceSpawnAccumulator >= 8 && Math.random() < 0.25) {
-                        spawnElectricFence();
-                        fenceSpawnAccumulator = 0;
-                    }
-                }
-
-                // Only spawn enemies and bombs when NOT fighting a boss
-                if (!bossActive) {
-                    // Spawn rate decreases (faster spawning) with level and difficulty
-                    const baseSpawnRate = Math.max(0.2, (0.8 - level * 0.1) * diff.spawnMult);
-                    // Spawn multiple enemies at higher difficulties
-                    const enemiesPerSpawn = selectedDifficulty === 'expert' ? 2 : (selectedDifficulty === 'hard' ? (Math.random() < 0.3 ? 2 : 1) : 1);
-
-                    spawnAccumulator += dt;
-                    if (spawnAccumulator >= baseSpawnRate) {
-                        for (let i = 0; i < enemiesPerSpawn; i++) spawnEnemy();
-                        spawnAccumulator = 0;
+                    // Electric fences spawn in level 3+ (not during boss fight)
+                    if (!bossActive && level >= 3) {
+                        fenceSpawnAccumulator += dt;
+                        if (fenceSpawnAccumulator >= 8 && Math.random() < 0.25) {
+                            spawnElectricFence();
+                            fenceSpawnAccumulator = 0;
+                        }
                     }
 
-                    bombAccumulator += dt;
-                    if (bombAccumulator >= 5 && Math.random() < 0.35) { spawnBomb(); bombAccumulator = 0; }
+                    // Only spawn enemies and bombs when NOT fighting a boss
+                    if (!bossActive) {
+                        // Spawn rate decreases (faster spawning) with level and difficulty
+                        const baseSpawnRate = Math.max(0.2, (0.8 - level * 0.1) * diff.spawnMult);
+                        // Spawn multiple enemies at higher difficulties
+                        const enemiesPerSpawn = selectedDifficulty === 'expert' ? 2 : (selectedDifficulty === 'hard' ? (Math.random() < 0.3 ? 2 : 1) : 1);
 
-                    spaceObjAccumulator += dt;
-                    if (spaceObjAccumulator >= 6 && Math.random() < 0.5) { spawnSpaceObject(); spaceObjAccumulator = 0; }
+                        spawnAccumulator += dt;
+                        if (spawnAccumulator >= baseSpawnRate) {
+                            for (let i = 0; i < enemiesPerSpawn; i++) spawnEnemy();
+                            spawnAccumulator = 0;
+                        }
+
+                        bombAccumulator += dt;
+                        if (bombAccumulator >= 5 && Math.random() < 0.35) { spawnBomb(); bombAccumulator = 0; }
+
+                        spaceObjAccumulator += dt;
+                        if (spaceObjAccumulator >= 6 && Math.random() < 0.5) { spawnSpaceObject(); spaceObjAccumulator = 0; }
+                    }
                 }
             }
 

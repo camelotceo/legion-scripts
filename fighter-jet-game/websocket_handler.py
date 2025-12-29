@@ -5,6 +5,7 @@ Uses Flask-SocketIO for real-time bidirectional communication.
 
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
+import random
 import redis_client
 
 # SocketIO instance - will be initialized in server.py
@@ -81,9 +82,16 @@ def register_handlers():
     def handle_player_state(data):
         """Broadcast player position/state to room."""
         room_code = data.get('roomCode')
+        player_id = data.get('playerId')
 
         if not room_code:
+            print(f"player_state: No room code from {player_id}")
             return
+
+        # Debug: log player state broadcasts (throttled)
+        import random
+        if random.random() < 0.01:
+            print(f"player_state: Broadcasting {player_id} position to room {room_code}")
 
         # Broadcast to all other players in the room
         emit('game_update', {
