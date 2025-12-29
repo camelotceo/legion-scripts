@@ -3630,7 +3630,26 @@
             }
 
             try {
-                mpSocket = io(API_BASE);
+                // If socket already exists and is connected, just join the room
+                if (mpSocket && mpSocket.connected) {
+                    console.log('WebSocket already connected, joining room');
+                    if (currentRoomCode) {
+                        mpSocket.emit('join_game', {
+                            roomCode: currentRoomCode,
+                            playerId: myPlayerId,
+                            playerName: myPlayerName || 'Player'
+                        });
+                    }
+                    return;
+                }
+
+                // Disconnect existing socket if any
+                if (mpSocket) {
+                    mpSocket.disconnect();
+                    mpSocket = null;
+                }
+
+                mpSocket = io(API_BASE, { forceNew: true });
 
                 mpSocket.on('connect', () => {
                     console.log('WebSocket connected');
@@ -3671,10 +3690,18 @@
                 });
 
                 // Direct listener for game_started (backup for non-host players)
-                mpSocket.on('game_started', (data) => {
+                mpSocket.on('game_started', async (data) => {
                     console.log('Received game_started event:', data);
-                    if (!isRoomHost) {
-                        launchMultiplayerGame(null);
+                    if (!isRoomHost && currentRoomCode) {
+                        // Fetch room data to get opponent info
+                        try {
+                            const response = await fetch(`${API_BASE}/api/rooms/${currentRoomCode}`);
+                            const room = await response.json();
+                            launchMultiplayerGame(room);
+                        } catch (err) {
+                            console.error('Failed to fetch room for game start:', err);
+                            launchMultiplayerGame(null);
+                        }
                     }
                 });
 
@@ -3718,7 +3745,7 @@
             }
         }
 
-        function handleMultiplayerGameUpdate(data) {
+        async function handleMultiplayerGameUpdate(data) {
             // Handle different update types
             switch (data.type) {
                 case 'player_state':
@@ -3731,8 +3758,16 @@
                     showCountdown(data.seconds);
                     break;
                 case 'game_started':
-                    if (!isRoomHost) {
-                        launchMultiplayerGame(null);
+                    if (!isRoomHost && currentRoomCode) {
+                        // Fetch room data to get opponent info
+                        try {
+                            const response = await fetch(`${API_BASE}/api/rooms/${currentRoomCode}`);
+                            const room = await response.json();
+                            launchMultiplayerGame(room);
+                        } catch (err) {
+                            console.error('Failed to fetch room:', err);
+                            launchMultiplayerGame(null);
+                        }
                     }
                     break;
                 case 'died':
@@ -9603,9 +9638,35 @@
 
         async function quitFromOpponentLeft() {
             document.getElementById('opponentLeftOverlay').classList.remove('show');
+
+            // Clean up multiplayer state
             isMultiplayer = false;
             currentRoomCode = null;
-            await quitGame();
+            stopPositionSync();
+
+            // Clean up game state (quitGame would return early since gameRunning is already false)
+            gamePaused = false;
+            laserActive = false;
+
+            // Clean up boss state
+            boss = null;
+            bossActive = false;
+            stopBossMusic();
+            document.getElementById('bossHealthContainer').classList.remove('show');
+            document.getElementById('bossTaunt').classList.remove('show');
+            document.getElementById('pauseOverlay').classList.remove('show');
+            document.getElementById('touchControls').classList.remove('show');
+
+            // Clean up live players
+            stopPlayerPolling();
+            document.getElementById('onlinePlayersBar').classList.remove('show');
+            await leaveAsPlayer();
+            stopBackgroundMusic();
+
+            // Show start screen
+            document.getElementById('startScreen').classList.remove('hidden');
+            document.getElementById('lobbySidebar').style.display = 'block';
+            await renderLeaderboard('startLeaderboardList');
         }
 
         async function quitFromPause() {
