@@ -273,6 +273,32 @@
         }
         #pauseOverlay.show { display: flex; }
         #pauseOverlay h2 { color: #ffd700; font-size: 36px; margin-bottom: 20px; }
+        /* Opponent Paused Overlay */
+        #opponentPausedOverlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); display: none; justify-content: center;
+            align-items: center; flex-direction: column; z-index: 250;
+        }
+        #opponentPausedOverlay.show { display: flex; }
+        #opponentPausedOverlay h2 { color: #fbbf24; font-size: 32px; margin-bottom: 10px; }
+        #opponentPausedOverlay p { color: #fff; font-size: 16px; margin-bottom: 20px; }
+        .waiting-spinner {
+            width: 40px; height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #fbbf24;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Opponent Left Overlay */
+        #opponentLeftOverlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9); display: none; justify-content: center;
+            align-items: center; flex-direction: column; z-index: 260;
+        }
+        #opponentLeftOverlay.show { display: flex; }
+        #opponentLeftOverlay h2 { color: #ef4444; font-size: 32px; margin-bottom: 10px; }
+        #opponentLeftOverlay p { color: #fff; font-size: 16px; margin-bottom: 20px; }
         .pause-btn {
             padding: 12px 30px; font-size: 16px; margin: 10px;
             background: linear-gradient(135deg, #4a6cf7, #6a4cf7);
@@ -1203,6 +1229,20 @@
             <h2>PAUSED</h2>
             <button class="pause-btn" onclick="resumeGame()">Resume</button>
             <button class="pause-btn quit" onclick="quitFromPause()">Quit Game</button>
+        </div>
+
+        <!-- Opponent Paused Overlay -->
+        <div id="opponentPausedOverlay">
+            <h2>WAITING</h2>
+            <p id="opponentPausedMessage">Opponent paused the game</p>
+            <div class="waiting-spinner"></div>
+        </div>
+
+        <!-- Opponent Left Overlay -->
+        <div id="opponentLeftOverlay">
+            <h2>OPPONENT LEFT</h2>
+            <p id="opponentLeftMessage">Your opponent has left the game</p>
+            <button class="pause-btn" onclick="quitFromOpponentLeft()">Return to Menu</button>
         </div>
     </div>
 
@@ -3657,6 +3697,22 @@
                     }
                 });
 
+                // === PAUSE/RESUME/LEAVE NOTIFICATIONS ===
+                mpSocket.on('opponent_paused', (data) => {
+                    console.log('Opponent paused:', data.playerName);
+                    showOpponentPausedOverlay(data.playerName);
+                });
+
+                mpSocket.on('opponent_resumed', (data) => {
+                    console.log('Opponent resumed:', data.playerName);
+                    hideOpponentPausedOverlay();
+                });
+
+                mpSocket.on('opponent_left', (data) => {
+                    console.log('Opponent left:', data.playerName, data.reason);
+                    showOpponentLeftOverlay(data.playerName);
+                });
+
             } catch (err) {
                 console.error('WebSocket connection error:', err);
             }
@@ -3703,8 +3759,13 @@
             // Update the other player's state from WebSocket
             if (data.playerId === myPlayerId) return; // Ignore own updates
 
-            coopState.partnerConnected = true;
+            // Mark partner/opponent as connected
+            if (selectedGameMode === 'coop') {
+                coopState.partnerConnected = true;
+            }
+
             otherPlayer.id = data.playerId;
+            otherPlayer.name = data.playerName || otherPlayer.name || 'Opponent';
             otherPlayer.x = data.x;
             otherPlayer.y = data.y;
             otherPlayer.dx = data.dx || 0;
@@ -3715,6 +3776,12 @@
             otherPlayer.lives = data.lives || 3;
             otherPlayer.isActive = data.isActive !== false;
             otherPlayer.isInvincible = data.isInvincible || false;
+
+            // For versus mode, also track opponent health
+            if (selectedGameMode === 'versus' && data.health !== null && data.health !== undefined) {
+                versusState.opponentHealth = data.health;
+                updateVersusHud();
+            }
         }
 
         function handleOtherPlayerShoot(data) {
@@ -3825,20 +3892,28 @@
             positionSyncInterval = setInterval(() => {
                 if (!gameRunning || !isMultiplayer || !mpSocket || !currentRoomCode) return;
 
+                // Determine isActive based on game mode
+                const playerIsActive = selectedGameMode === 'versus'
+                    ? (versusState.myHealth > 0 && versusState.roundActive)
+                    : coopState.amActive;
+
                 mpSocket.emit('player_state', {
                     roomCode: currentRoomCode,
                     playerId: myPlayerId,
+                    playerName: myPlayerName,
                     x: player.x,
                     y: player.y,
-                    dx: player.dx,
-                    dy: player.dy,
+                    dx: player.dx || 0,
+                    dy: player.dy || 0,
                     shieldActive: shieldActive,
                     ghostActive: ghostActive,
                     currentWeapon: currentWeapon,
                     lives: lives,
                     score: score,
-                    isActive: coopState.amActive,
-                    isInvincible: coopState.amInvincible
+                    isActive: playerIsActive,
+                    isInvincible: selectedGameMode === 'versus' ? versusState.myInvulnerable : coopState.amInvincible,
+                    gameMode: selectedGameMode,
+                    health: selectedGameMode === 'versus' ? versusState.myHealth : null
                 });
             }, POSITION_SYNC_RATE);
         }
@@ -9385,9 +9460,28 @@
 
         async function quitGame() {
             if (!gameRunning) return;
+
+            // Notify opponent in multiplayer before cleanup
+            if (isMultiplayer && mpSocket && currentRoomCode) {
+                mpSocket.emit('player_quit', {
+                    roomCode: currentRoomCode,
+                    playerId: myPlayerId,
+                    playerName: myPlayerName,
+                    reason: 'quit'
+                });
+            }
+
             gameRunning = false;
             gamePaused = false;
             laserActive = false;
+
+            // Clean up multiplayer state
+            if (isMultiplayer) {
+                stopPositionSync();
+                isMultiplayer = false;
+                currentRoomCode = null;
+            }
+
             // End server game session
             endServerGameSession('quit', false);
             // Clean up boss state
@@ -9398,6 +9492,11 @@
             document.getElementById('bossTaunt').classList.remove('show');
             document.getElementById('pauseOverlay').classList.remove('show');
             document.getElementById('touchControls').classList.remove('show');
+            // Hide multiplayer overlays
+            const opponentPausedOverlay = document.getElementById('opponentPausedOverlay');
+            if (opponentPausedOverlay) opponentPausedOverlay.classList.remove('show');
+            const opponentLeftOverlay = document.getElementById('opponentLeftOverlay');
+            if (opponentLeftOverlay) opponentLeftOverlay.classList.remove('show');
             // Clean up live players
             stopPlayerPolling();
             document.getElementById('onlinePlayersBar').classList.remove('show');
@@ -9424,18 +9523,89 @@
             document.getElementById('pauseOverlay').classList.add('show');
             stopBackgroundMusic();
             stopBossMusic();
+
+            // Notify opponent in multiplayer
+            if (isMultiplayer && mpSocket && currentRoomCode) {
+                mpSocket.emit('player_paused', {
+                    roomCode: currentRoomCode,
+                    playerId: myPlayerId,
+                    playerName: myPlayerName
+                });
+            }
         }
 
         function resumeGame() {
             if (!gamePaused) return;
             gamePaused = false;
             document.getElementById('pauseOverlay').classList.remove('show');
+
+            // Hide opponent paused overlay if showing
+            const opponentPausedOverlay = document.getElementById('opponentPausedOverlay');
+            if (opponentPausedOverlay) {
+                opponentPausedOverlay.classList.remove('show');
+            }
+
             lastFrameTime = performance.now();
             if (bossActive) {
                 startBossMusic();
             } else {
                 startBackgroundMusic(shieldActive);
             }
+
+            // Notify opponent in multiplayer
+            if (isMultiplayer && mpSocket && currentRoomCode) {
+                mpSocket.emit('player_resumed', {
+                    roomCode: currentRoomCode,
+                    playerId: myPlayerId,
+                    playerName: myPlayerName
+                });
+            }
+        }
+
+        // === OPPONENT STATUS OVERLAYS ===
+        function showOpponentPausedOverlay(opponentName) {
+            if (!isMultiplayer) return;
+            // Pause our game when opponent pauses
+            if (!gamePaused) {
+                gamePaused = true;
+                stopBackgroundMusic();
+                stopBossMusic();
+            }
+            document.getElementById('opponentPausedMessage').textContent = `${opponentName} paused the game`;
+            document.getElementById('opponentPausedOverlay').classList.add('show');
+        }
+
+        function hideOpponentPausedOverlay() {
+            document.getElementById('opponentPausedOverlay').classList.remove('show');
+            // Auto-resume if we weren't the ones who paused
+            if (gamePaused && !document.getElementById('pauseOverlay').classList.contains('show')) {
+                gamePaused = false;
+                lastFrameTime = performance.now();
+                if (bossActive) {
+                    startBossMusic();
+                } else {
+                    startBackgroundMusic(shieldActive);
+                }
+            }
+        }
+
+        function showOpponentLeftOverlay(opponentName) {
+            if (!isMultiplayer) return;
+            // Stop the game
+            gameRunning = false;
+            gamePaused = true;
+            stopBackgroundMusic();
+            stopBossMusic();
+            stopPositionSync();
+            document.getElementById('opponentLeftMessage').textContent = `${opponentName} has left the game`;
+            document.getElementById('opponentLeftOverlay').classList.add('show');
+        }
+
+        async function quitFromOpponentLeft() {
+            document.getElementById('opponentLeftOverlay').classList.remove('show');
+            isMultiplayer = false;
+            currentRoomCode = null;
+            await quitGame();
         }
 
         async function quitFromPause() {

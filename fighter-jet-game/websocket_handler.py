@@ -89,6 +89,7 @@ def register_handlers():
         emit('game_update', {
             'type': 'player_state',
             'playerId': data.get('playerId'),
+            'playerName': data.get('playerName', 'Player'),
             'x': data.get('x'),
             'y': data.get('y'),
             'dx': data.get('dx', 0),
@@ -98,6 +99,10 @@ def register_handlers():
             'currentWeapon': data.get('currentWeapon', 'pistol'),
             'lives': data.get('lives', 3),
             'score': data.get('score', 0),
+            'isActive': data.get('isActive', True),
+            'isInvincible': data.get('isInvincible', False),
+            'gameMode': data.get('gameMode', 'coop'),
+            'health': data.get('health'),
             'timestamp': datetime.now().isoformat()
         }, to=room_code, include_self=False)
 
@@ -424,5 +429,54 @@ def register_handlers():
         emit('round_ended', {
             'loser': data.get('loser'),
             'roundNumber': data.get('roundNumber'),
+            'timestamp': datetime.now().isoformat()
+        }, to=room_code, include_self=False)
+
+    # === PAUSE/RESUME/LEAVE NOTIFICATIONS ===
+
+    @socketio.on('player_paused')
+    def handle_player_paused(data):
+        """Player paused the game."""
+        room_code = data.get('roomCode')
+
+        if not room_code:
+            return
+
+        emit('opponent_paused', {
+            'playerId': data.get('playerId'),
+            'playerName': data.get('playerName', 'Opponent'),
+            'timestamp': datetime.now().isoformat()
+        }, to=room_code, include_self=False)
+
+    @socketio.on('player_resumed')
+    def handle_player_resumed(data):
+        """Player resumed the game."""
+        room_code = data.get('roomCode')
+
+        if not room_code:
+            return
+
+        emit('opponent_resumed', {
+            'playerId': data.get('playerId'),
+            'playerName': data.get('playerName', 'Opponent'),
+            'timestamp': datetime.now().isoformat()
+        }, to=room_code, include_self=False)
+
+    @socketio.on('player_quit')
+    def handle_player_quit(data):
+        """Player quit the game."""
+        room_code = data.get('roomCode')
+
+        if not room_code:
+            return
+
+        # Leave the socket.io room
+        leave_room(room_code)
+
+        # Notify opponent
+        emit('opponent_left', {
+            'playerId': data.get('playerId'),
+            'playerName': data.get('playerName', 'Opponent'),
+            'reason': data.get('reason', 'quit'),
             'timestamp': datetime.now().isoformat()
         }, to=room_code, include_self=False)
