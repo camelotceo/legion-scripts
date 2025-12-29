@@ -3687,9 +3687,17 @@
                 });
 
                 mpSocket.on('game_update', (data) => {
-                    // Debug: log game updates
-                    if (data.type === 'player_state' && Math.random() < 0.02) {
-                        console.log('PvP: Received player_state from', data.playerId, 'at', data.x, data.y);
+                    // Debug: log game updates (more frequently for debugging)
+                    if (data.type === 'player_state') {
+                        // Log first 5 updates always, then 5% of rest
+                        if (!window._pvpUpdateCount) window._pvpUpdateCount = 0;
+                        window._pvpUpdateCount++;
+                        if (window._pvpUpdateCount <= 5 || Math.random() < 0.05) {
+                            console.log('PvP: Received player_state from', data.playerId, 'at', Math.round(data.x), Math.round(data.y),
+                                        'myPlayerId:', myPlayerId, 'isMe:', data.playerId === myPlayerId);
+                        }
+                    } else if (data.type === 'shoot') {
+                        console.log('PvP: Received shoot from', data.playerId, 'at', Math.round(data.x), Math.round(data.y));
                     }
                     handleMultiplayerGameUpdate(data);
                 });
@@ -3937,6 +3945,8 @@
         // Start syncing position to partner
         function startPositionSync() {
             if (positionSyncInterval) clearInterval(positionSyncInterval);
+
+            console.log('PvP: Starting position sync - playerId:', myPlayerId, 'roomCode:', currentRoomCode, 'gameMode:', selectedGameMode);
 
             positionSyncInterval = setInterval(() => {
                 if (!gameRunning || !isMultiplayer || !mpSocket || !currentRoomCode) {
@@ -9339,12 +9349,18 @@
         async function startGame() {
             if (audioContext.state === 'suspended') await audioContext.resume();
 
-            // Check username availability BEFORE starting the game
-            await leaveAsPlayer(); // Leave any old session first
-            const joined = await joinAsPlayer();
-            if (!joined) {
-                // Username taken or other error - modal already shown, don't start game
-                return;
+            // In multiplayer mode, player is already registered when creating/joining room
+            // Skip joinAsPlayer to avoid changing myPlayerId which would break WebSocket room sync
+            if (!isMultiplayer) {
+                // Check username availability BEFORE starting the game (single player only)
+                await leaveAsPlayer(); // Leave any old session first
+                const joined = await joinAsPlayer();
+                if (!joined) {
+                    // Username taken or other error - modal already shown, don't start game
+                    return;
+                }
+            } else {
+                console.log('Multiplayer mode: skipping joinAsPlayer, using existing playerId:', myPlayerId);
             }
 
             closeSetupModal();
