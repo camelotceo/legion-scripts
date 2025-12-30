@@ -109,6 +109,29 @@
         .weapon-slot.no-ammo .weapon-ammo {
             color: #ff0000;
         }
+        /* Shield slot styling */
+        .weapon-slot.shield-slot {
+            border-color: #00d4ff;
+            background: rgba(0, 100, 150, 0.7);
+        }
+        .weapon-slot.shield-slot:hover {
+            border-color: #00ffff;
+            background: rgba(0, 150, 200, 0.7);
+        }
+        .weapon-slot.shield-slot.active {
+            border-color: #00ffff;
+            background: rgba(0, 200, 255, 0.8);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
+            animation: shieldPulse 1s infinite;
+        }
+        .weapon-slot.shield-slot.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        @keyframes shieldPulse {
+            0%, 100% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.4); }
+            50% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.8); }
+        }
         /* Mobile: slightly larger touch targets */
         @media (max-width: 600px) {
             #weaponPanel {
@@ -771,6 +794,10 @@
                         <h4 class="expert">EXPERT</h4>
                         <ul class="leaderboard-list" id="leaderboardExpert"></ul>
                     </div>
+                    <div class="leaderboard-column">
+                        <h4 style="color: #ff6b6b;">1v1 PVP</h4>
+                        <ul class="leaderboard-list" id="leaderboardPvP"></ul>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1183,6 +1210,10 @@
                         <h4 class="expert">EXPERT</h4>
                         <ul class="leaderboard-list" id="gameOverLeaderboardExpert"></ul>
                     </div>
+                    <div class="leaderboard-column">
+                        <h4 style="color: #ff6b6b;">1v1 PVP</h4>
+                        <ul class="leaderboard-list" id="gameOverLeaderboardPvP"></ul>
+                    </div>
                 </div>
             </div>
             <button class="btn" onclick="startGame()">Play Again</button>
@@ -1440,7 +1471,7 @@
         // === LEADERBOARD SYSTEM (Server-side JSON) ===
         const MAX_LEADERBOARD_SIZE = 10;
         let cachedLeaderboard = [];
-        let allLeaderboards = { EASY: [], MEDIUM: [], HARD: [], EXPERT: [] };
+        let allLeaderboards = { EASY: [], MEDIUM: [], HARD: [], EXPERT: [], PVP: [] };
 
         async function fetchAllLeaderboards() {
             try {
@@ -1542,11 +1573,36 @@
             renderLeaderboardColumn(allLeaderboards.MEDIUM, 'leaderboardMedium');
             renderLeaderboardColumn(allLeaderboards.HARD, 'leaderboardHard');
             renderLeaderboardColumn(allLeaderboards.EXPERT, 'leaderboardExpert');
+            renderPvPLeaderboard(allLeaderboards.PVP, 'leaderboardPvP');
             // Game over screen leaderboards
             renderLeaderboardColumn(allLeaderboards.EASY, 'gameOverLeaderboardEasy');
             renderLeaderboardColumn(allLeaderboards.MEDIUM, 'gameOverLeaderboardMedium');
             renderLeaderboardColumn(allLeaderboards.HARD, 'gameOverLeaderboardHard');
             renderLeaderboardColumn(allLeaderboards.EXPERT, 'gameOverLeaderboardExpert');
+            renderPvPLeaderboard(allLeaderboards.PVP, 'gameOverLeaderboardPvP');
+        }
+
+        function renderPvPLeaderboard(scores, listElementId) {
+            const listEl = document.getElementById(listElementId);
+            if (!listEl) return;
+            if (!scores || scores.length === 0) {
+                listEl.innerHTML = '<li style="justify-content: center; color: #666; font-size: 9px;">No matches yet</li>';
+                return;
+            }
+            // For PvP, show wins (bossesDefeated field stores win count)
+            const sorted = [...scores].sort((a, b) => {
+                // Sort by wins first, then by score
+                const aWins = a.bossesDefeated || 0;
+                const bWins = b.bossesDefeated || 0;
+                if (bWins !== aWins) return bWins - aWins;
+                return b.score - a.score;
+            });
+            const top5 = sorted.slice(0, 5);
+            listEl.innerHTML = top5.map((entry, i) => {
+                const wins = entry.bossesDefeated || 0;
+                const result = entry.deathReason === 'victory' ? '🏆' : '';
+                return `<li><span class="rank">${i + 1}.</span><span class="name">${result}${entry.name}</span><span class="score">${entry.score.toLocaleString()}</span></li>`;
+            }).join('');
         }
 
         function renderLeaderboardFromCache(listElementId) {
@@ -4783,10 +4839,45 @@
                 });
             }
 
+            // Submit 1v1 score to leaderboard
+            submitPvPScore(isWinner);
+
             // Show match result
             const title = isWinner ? 'VICTORY!' : 'DEFEAT';
             const color = isWinner ? '#ffd700' : '#ef4444';
             showVersusMatchOverlay(title, color, versusState.myScore, versusState.opponentScore);
+        }
+
+        // Submit PvP match result to leaderboard
+        async function submitPvPScore(isWinner) {
+            try {
+                const url = `${API_BASE}/api/leaderboard`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: myPlayerName,
+                        score: versusState.myScore,
+                        difficulty: 'PVP',
+                        level: versusState.myRoundWins,  // Rounds won
+                        duration: 0,
+                        bossesDefeated: isWinner ? 1 : 0,  // Use this field for wins
+                        deathReason: isWinner ? 'victory' : 'defeat',
+                        opponent: otherPlayer.name,
+                        roundsWon: versusState.myRoundWins,
+                        roundsLost: versusState.opponentRoundWins
+                    })
+                });
+                if (response.ok) {
+                    console.log('PvP score submitted successfully');
+                    // Refresh leaderboard
+                    await fetchAllLeaderboards();
+                } else {
+                    console.error('Failed to submit PvP score:', response.status);
+                }
+            } catch (e) {
+                console.error('Error submitting PvP score:', e);
+            }
         }
 
         // Show round transition overlay
@@ -7870,6 +7961,7 @@
             if (shieldCharges < maxShieldCharges) {
                 shieldCharges++;
                 updateShieldChargeDisplay();
+                updateWeaponPanel(); // Update weapon panel to show new charge count
                 console.log('Shield charge added. Total:', shieldCharges);
             }
         }
@@ -7879,6 +7971,7 @@
                 shieldCharges--;
                 updateShieldChargeDisplay();
                 activateShield();
+                updateWeaponPanel(); // Update weapon panel to show shield active
                 console.log('Shield activated from charge. Remaining:', shieldCharges);
             }
         }
@@ -9045,7 +9138,7 @@
                 return weaponAmmo[weaponKey] > 0; // Only show if has ammo
             });
 
-            panel.innerHTML = availableWeapons.map((weaponKey) => {
+            let html = availableWeapons.map((weaponKey) => {
                 const weapon = WEAPONS[weaponKey];
                 const ammo = weaponKey === 'pistol' ? Infinity : weaponAmmo[weaponKey];
                 const isActive = currentWeapon === weaponKey;
@@ -9065,9 +9158,33 @@
                 `;
             }).join('');
 
+            // Add shield slot in versus mode
+            if (isMultiplayer && selectedGameMode === 'versus') {
+                const canUseShield = shieldCharges > 0 && !shieldActive;
+                let shieldClasses = 'weapon-slot shield-slot';
+                if (shieldActive) shieldClasses += ' active';
+                if (!canUseShield) shieldClasses += ' disabled';
+
+                html += `
+                    <div class="${shieldClasses}" data-shield="true" title="Shield (E) - Blocks all damage for 5 sec">
+                        <div class="weapon-icon">🛡️</div>
+                        <div class="weapon-ammo">${shieldCharges}</div>
+                    </div>
+                `;
+            }
+
+            panel.innerHTML = html;
+
             // Add touch/click event listeners (using event delegation)
             panel.onclick = panel.ontouchend = function(e) {
                 e.preventDefault();
+                // Check for shield slot click
+                const shieldSlot = e.target.closest('.weapon-slot[data-shield]');
+                if (shieldSlot) {
+                    activateShieldCharge();
+                    return;
+                }
+                // Check for weapon slot click
                 const slot = e.target.closest('.weapon-slot[data-weapon]');
                 if (slot) {
                     const weaponKey = slot.dataset.weapon;
@@ -9121,6 +9238,7 @@
             if (!isMuted && gameRunning) startBackgroundMusic(false);
             // Update shield button state
             updateShieldChargeDisplay();
+            updateWeaponPanel(); // Update weapon panel to show shield no longer active
         }
 
         function activateGhost() {

@@ -4,12 +4,17 @@ Uses Flask-SocketIO for real-time bidirectional communication.
 """
 
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask import request
 from datetime import datetime
 import random
 import redis_client
 
 # SocketIO instance - will be initialized in server.py
 socketio = None
+
+# Track which socket session is in which room (for disconnect handling)
+# Maps session_id -> {'roomCode': str, 'playerId': str, 'playerName': str}
+session_rooms = {}
 
 
 def init_socketio(app):
@@ -26,13 +31,35 @@ def register_handlers():
     @socketio.on('connect')
     def handle_connect():
         """Handle new WebSocket connection."""
-        print(f"Client connected")
+        print(f"Client connected: {request.sid}")
         emit('connected', {'status': 'ok'})
 
     @socketio.on('disconnect')
     def handle_disconnect():
-        """Handle WebSocket disconnection."""
-        print(f"Client disconnected")
+        """Handle WebSocket disconnection - notify opponent if in a game."""
+        sid = request.sid
+        print(f"Client disconnected: {sid}")
+
+        # Check if this session was in a room
+        if sid in session_rooms:
+            session_data = session_rooms[sid]
+            room_code = session_data.get('roomCode')
+            player_id = session_data.get('playerId')
+            player_name = session_data.get('playerName', 'Opponent')
+
+            print(f"Player {player_name} ({player_id}) disconnected from room {room_code}")
+
+            # Notify other players in the room
+            if room_code:
+                emit('opponent_left', {
+                    'playerId': player_id,
+                    'playerName': player_name,
+                    'reason': 'disconnected',
+                    'timestamp': datetime.now().isoformat()
+                }, to=room_code, include_self=False)
+
+            # Clean up session tracking
+            del session_rooms[sid]
 
     @socketio.on('join_game')
     def handle_join_game(data):
@@ -44,6 +71,14 @@ def register_handlers():
         if not room_code or not player_id:
             emit('error', {'message': 'Missing roomCode or playerId'})
             return
+
+        # Track this session for disconnect handling
+        sid = request.sid
+        session_rooms[sid] = {
+            'roomCode': room_code,
+            'playerId': player_id,
+            'playerName': player_name
+        }
 
         # Join the Socket.IO room
         join_room(room_code)
@@ -61,13 +96,18 @@ def register_handlers():
             'success': True
         })
 
-        print(f"Player {player_name} ({player_id}) joined room {room_code}")
+        print(f"Player {player_name} ({player_id}) joined room {room_code} (sid: {sid})")
 
     @socketio.on('leave_game')
     def handle_leave_game(data):
         """Player leaves a multiplayer game room."""
         room_code = data.get('roomCode')
         player_id = data.get('playerId')
+
+        # Clean up session tracking
+        sid = request.sid
+        if sid in session_rooms:
+            del session_rooms[sid]
 
         if room_code:
             leave_room(room_code)
@@ -104,6 +144,8 @@ def register_handlers():
             'shieldActive': data.get('shieldActive', False),
             'ghostActive': data.get('ghostActive', False),
             'currentWeapon': data.get('currentWeapon', 'pistol'),
+            'laserActive': data.get('laserActive', False),
+            'lightningActive': data.get('lightningActive', False),
             'lives': data.get('lives', 3),
             'score': data.get('score', 0),
             'isActive': data.get('isActive', True),
@@ -478,6 +520,11 @@ def register_handlers():
     def handle_player_quit(data):
         """Player quit the game."""
         room_code = data.get('roomCode')
+
+        # Clean up session tracking
+        sid = request.sid
+        if sid in session_rooms:
+            del session_rooms[sid]
 
         if not room_code:
             return

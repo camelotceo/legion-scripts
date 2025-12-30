@@ -313,12 +313,12 @@ def cleanup_stale_players():
             del active_players[pid]
 
 
-VALID_DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD', 'EXPERT']
+VALID_DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD', 'EXPERT', 'PVP']
 
 def get_all_leaderboards():
     """Read all leaderboards from JSON file (organized by difficulty)."""
     if not LEADERBOARD_FILE.exists():
-        return {"EASY": [], "MEDIUM": [], "HARD": [], "EXPERT": []}
+        return {"EASY": [], "MEDIUM": [], "HARD": [], "EXPERT": [], "PVP": []}
     try:
         with open(LEADERBOARD_FILE, 'r') as f:
             data = json.load(f)
