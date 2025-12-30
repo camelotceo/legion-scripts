@@ -3907,6 +3907,8 @@
             otherPlayer.shieldActive = data.shieldActive || false;
             otherPlayer.ghostActive = data.ghostActive || false;
             otherPlayer.currentWeapon = data.currentWeapon || 'pistol';
+            otherPlayer.laserActive = data.laserActive || false;
+            otherPlayer.lightningActive = data.lightningActive || false;
             otherPlayer.lives = data.lives || 3;
             otherPlayer.isActive = data.isActive !== false;
             otherPlayer.isInvincible = data.isInvincible || false;
@@ -3920,16 +3922,26 @@
 
         function handleOtherPlayerShoot(data) {
             // Create bullet for other player
-            console.log('PvP: Received shot from', data.playerId, 'myPlayerId:', myPlayerId, 'at', Math.round(data.x), Math.round(data.y));
+            console.log('PvP: Received shot from', data.playerId, 'myPlayerId:', myPlayerId, 'weapon:', data.weapon, 'at', Math.round(data.x), Math.round(data.y));
             if (data.playerId === myPlayerId) {
                 console.log('PvP: Ignoring own bullet from server');
+                return;
+            }
+
+            // Laser is a continuous beam, not projectile bullets - skip creating bullets for it
+            // The laser state is synced through player_state updates (currentWeapon field)
+            if (data.weapon === 'laser') {
+                console.log('PvP: Laser shot received - laser damage is handled via currentWeapon sync');
                 return;
             }
 
             const weaponData = {
                 pistol: { speed: 600, size: 4, color: '#4ade80' },
                 machinegun: { speed: 700, size: 3, color: '#fbbf24' },
-                bazooka: { speed: 400, size: 8, color: '#ef4444' }
+                bazooka: { speed: 400, size: 8, color: '#ef4444' },
+                flak: { speed: 500, size: 3, color: '#ff9933' },
+                disc: { speed: 450, size: 10, color: '#00ffff' },
+                swarm: { speed: 400, size: 4, color: '#ff00ff' }
             };
             const wp = weaponData[data.weapon] || weaponData.pistol;
 
@@ -4070,6 +4082,8 @@
                     shieldActive: shieldActive,
                     ghostActive: ghostActive,
                     currentWeapon: currentWeapon,
+                    laserActive: laserActive,  // Track if laser beam is active
+                    lightningActive: lightningActive,  // Track lightning aura
                     lives: lives,
                     score: score,
                     isActive: playerIsActive,
@@ -4234,6 +4248,8 @@
             shieldActive: false,
             ghostActive: false,
             currentWeapon: 'pistol',
+            laserActive: false,      // Track if opponent is firing laser
+            lightningActive: false,  // Track if opponent has lightning aura
             color: 'pink',           // P2 uses pink by default
             lives: 3,
             score: 0
@@ -4263,6 +4279,7 @@
                 dx: 0, dy: 0, isActive: true, respawnsLeft: COOP_MAX_RESPAWNS,
                 respawnTimer: 0, respawnStartTime: 0, isInvincible: false, invincibleUntil: 0,
                 shieldActive: false, ghostActive: false, currentWeapon: 'pistol',
+                laserActive: false, lightningActive: false,
                 color: 'pink', lives: 3, score: 0
             };
             coopState = {
@@ -8411,6 +8428,49 @@
             }
         }
 
+        function drawOpponentLaser() {
+            // Draw laser beam for opponent in multiplayer
+            if (!isMultiplayer || !otherPlayer.laserActive || !otherPlayer.isActive) return;
+
+            // In versus mode, opponent's laser goes DOWN (toward player at bottom)
+            // In coop mode, partner's laser goes UP (same as player)
+            const isVersus = selectedGameMode === 'versus';
+            const laserStartY = otherPlayer.y + (isVersus ? 25 : -25);
+            const laserEndY = isVersus ? logicalHeight : 0;
+
+            // Check if laser hits player (in versus mode)
+            if (isVersus && !ghostActive && !shieldActive && !isInvincible && versusState.roundActive) {
+                // Check if player is in laser path
+                if (Math.abs(player.x - otherPlayer.x) < 20 && player.y > otherPlayer.y) {
+                    // Player is hit by laser! Take damage
+                    if (!versusState.myInvulnerable && canTakeDamage()) {
+                        takePvPDamage(1); // Small damage per frame (laser is continuous)
+                    }
+                }
+            }
+
+            // Draw the laser beam
+            const gradient = ctx.createLinearGradient(otherPlayer.x, laserStartY, otherPlayer.x, laserEndY);
+            if (isVersus) {
+                // Red/orange laser for opponent (going down)
+                gradient.addColorStop(0, 'rgba(255, 100, 0, 1)');
+                gradient.addColorStop(0.5, 'rgba(255, 50, 0, 0.8)');
+                gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+            } else {
+                // Same color as player laser for partner
+                gradient.addColorStop(0, 'rgba(255, 100, 255, 1)');
+                gradient.addColorStop(0.5, 'rgba(255, 0, 255, 0.8)');
+                gradient.addColorStop(1, 'rgba(255, 0, 255, 0)');
+            }
+
+            ctx.fillStyle = 'rgba(255, 100, 0, 0.2)';
+            ctx.fillRect(otherPlayer.x - 15, Math.min(laserStartY, laserEndY), 30, Math.abs(laserEndY - laserStartY));
+            ctx.fillStyle = gradient;
+            ctx.fillRect(otherPlayer.x - 8, Math.min(laserStartY, laserEndY), 16, Math.abs(laserEndY - laserStartY));
+            ctx.fillStyle = '#ffff00';
+            ctx.fillRect(otherPlayer.x - 3, Math.min(laserStartY, laserEndY), 6, Math.abs(laserEndY - laserStartY));
+        }
+
         function drawBomb(bomb) {
             ctx.save();
             ctx.translate(bomb.x, bomb.y);
@@ -9813,6 +9873,10 @@
             drawParticles();
             if (gameRunning && lives > 0) {
                 drawLaser();
+                // Draw opponent laser in multiplayer
+                if (isMultiplayer) {
+                    drawOpponentLaser();
+                }
                 // Ghost mode: draw player semi-transparent
                 if (ghostActive) {
                     ctx.globalAlpha = 0.4 + Math.sin(Date.now() / 100) * 0.2;
@@ -10270,6 +10334,7 @@
 
             // Clean up game state (quitGame would return early since gameRunning is already false)
             gamePaused = false;
+            gameRunning = false;
             laserActive = false;
 
             // Clean up boss state
@@ -10279,7 +10344,13 @@
             document.getElementById('bossHealthContainer').classList.remove('show');
             document.getElementById('bossTaunt').classList.remove('show');
             document.getElementById('pauseOverlay').classList.remove('show');
+            document.getElementById('opponentPausedOverlay').classList.remove('show');
             document.getElementById('touchControls').classList.remove('show');
+
+            // Hide multiplayer HUDs
+            document.getElementById('coopHud').style.display = 'none';
+            document.getElementById('versusHud').style.display = 'none';
+            document.getElementById('ui').style.display = 'flex';
 
             // Clean up live players
             stopPlayerPolling();

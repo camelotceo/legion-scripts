@@ -1,0 +1,20 @@
+# Test dependencies for Fighter Jet Game
+# Install with: pip install -r requirements-test.txt
+
+# Core dependencies (from requirements.txt)
+flask==3.0.0
+flask-cors==4.0.0
+gunicorn==21.2.0
+redis==5.0.1
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+apscheduler==3.10.4
+
+# Testing framework
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.0.0
+
+# Mocking
+fakeredis>=2.0.0
+responses>=0.20.0
