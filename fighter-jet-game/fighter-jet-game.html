@@ -7748,7 +7748,9 @@
                 if (!unlockedWeapons.includes(pickup.type)) {
                     unlockedWeapons.push(pickup.type);
                 }
-                weaponAmmo[pickup.type] = (weaponAmmo[pickup.type] || 0) + 30;
+                // Laser only lasts 3 seconds, other weapons get 30 ammo
+                const ammoAmount = (pickup.type === 'laser') ? 3 : 30;
+                weaponAmmo[pickup.type] = (weaponAmmo[pickup.type] || 0) + ammoAmount;
                 currentWeapon = pickup.type;
                 updateWeaponDisplay();
             } else if (pickup.category === 'powerup') {
@@ -8430,6 +8432,7 @@
 
         function drawOpponentLaser() {
             // Draw laser beam for opponent in multiplayer
+            // Note: Damage is handled in updateOpponentLaser() in the update loop
             if (!isMultiplayer || !otherPlayer.laserActive || !otherPlayer.isActive) return;
 
             // In versus mode, opponent's laser goes DOWN (toward player at bottom)
@@ -8437,17 +8440,6 @@
             const isVersus = selectedGameMode === 'versus';
             const laserStartY = otherPlayer.y + (isVersus ? 25 : -25);
             const laserEndY = isVersus ? logicalHeight : 0;
-
-            // Check if laser hits player (in versus mode)
-            if (isVersus && !ghostActive && !shieldActive && !isInvincible && versusState.roundActive) {
-                // Check if player is in laser path
-                if (Math.abs(player.x - otherPlayer.x) < 20 && player.y > otherPlayer.y) {
-                    // Player is hit by laser! Take damage
-                    if (!versusState.myInvulnerable && canTakeDamage()) {
-                        takePvPDamage(1); // Small damage per frame (laser is continuous)
-                    }
-                }
-            }
 
             // Draw the laser beam
             const gradient = ctx.createLinearGradient(otherPlayer.x, laserStartY, otherPlayer.x, laserEndY);
@@ -8469,6 +8461,47 @@
             ctx.fillRect(otherPlayer.x - 8, Math.min(laserStartY, laserEndY), 16, Math.abs(laserEndY - laserStartY));
             ctx.fillStyle = '#ffff00';
             ctx.fillRect(otherPlayer.x - 3, Math.min(laserStartY, laserEndY), 6, Math.abs(laserEndY - laserStartY));
+        }
+
+        // Track opponent laser damage timing (so we don't do damage every frame)
+        let opponentLaserDamageTimer = 0;
+        const OPPONENT_LASER_DAMAGE_INTERVAL = 500; // Damage every 0.5 seconds
+        const OPPONENT_LASER_DAMAGE = 15; // Significant damage per tick
+
+        function updateOpponentLaser(dt) {
+            // Handle opponent laser damage in versus mode
+            if (!isMultiplayer || selectedGameMode !== 'versus') return;
+            if (!otherPlayer.laserActive || !otherPlayer.isActive) {
+                opponentLaserDamageTimer = 0;
+                return;
+            }
+            if (!versusState.roundActive) return;
+
+            // Check if player is in laser path (opponent at top fires DOWN)
+            // Laser hits if player X is within 25 pixels of opponent X
+            const inLaserPath = Math.abs(player.x - otherPlayer.x) < 25;
+
+            if (inLaserPath && !ghostActive && !isInvincible) {
+                opponentLaserDamageTimer += dt * 1000;
+
+                if (opponentLaserDamageTimer >= OPPONENT_LASER_DAMAGE_INTERVAL) {
+                    opponentLaserDamageTimer = 0;
+
+                    if (shieldActive) {
+                        // Shield absorbs the hit
+                        shieldHits--;
+                        if (shieldHits <= 0) deactivateShield();
+                        createExplosion(player.x, player.y, '#00ffff');
+                    } else if (!versusState.myInvulnerable && canTakeDamage()) {
+                        // Take laser damage
+                        takePvPDamage(OPPONENT_LASER_DAMAGE);
+                        console.log('PvP: Hit by opponent laser! Damage:', OPPONENT_LASER_DAMAGE);
+                    }
+                }
+            } else {
+                // Reset timer when not in laser path
+                opponentLaserDamageTimer = 0;
+            }
         }
 
         function drawBomb(bomb) {
@@ -9368,6 +9401,7 @@
             if (isMultiplayer && selectedGameMode === 'versus' && versusState.roundActive) {
                 spawnVersusPickup(); // Host spawns pickups
                 updateVersusPickups(dt); // Update positions and check collisions
+                updateOpponentLaser(dt); // Handle opponent laser damage
             }
 
             // Update bombs
@@ -9752,8 +9786,10 @@
                         unlockedWeapons.push(w.type);
                     }
                     // Add ammo for the weapon (stackable)
+                    // Laser only gets 3 seconds, other weapons get full ammo
                     if (w.type !== 'pistol') {
-                        weaponAmmo[w.type] += AMMO_PER_PICKUP;
+                        const ammo = (w.type === 'laser') ? 3 : AMMO_PER_PICKUP;
+                        weaponAmmo[w.type] += ammo;
                     }
                     currentWeapon = w.type;
                     updateWeaponDisplay();
